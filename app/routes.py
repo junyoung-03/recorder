@@ -333,13 +333,34 @@ def schedule():
     calendar = get_schedule_calendar_data(current_year, current_month)
     
     # 선택된 날짜의 일정 목록
-    schedules = Schedule.query.filter(
+    selected_schedules = Schedule.query.filter(
         Schedule.date == selected_date
     ).all()
     
     # 시간이 있는 것 먼저, 그 다음 시간 순으로 정렬
     from datetime import time as dt_time
-    schedules.sort(key=lambda s: (s.time is None, s.time or dt_time(23, 59, 59), s.created_at or datetime.min))
+    selected_schedules.sort(key=lambda s: (s.time is None, s.time or dt_time(23, 59, 59), s.created_at or datetime.min))
+    
+    # 이번 달 전체 일정 목록 (날짜별로 그룹화)
+    start_date = date(current_year, current_month, 1)
+    last_day = monthrange(current_year, current_month)[1]
+    end_date = date(current_year, current_month, last_day)
+    
+    all_schedules = Schedule.query.filter(
+        Schedule.date >= start_date,
+        Schedule.date <= end_date
+    ).order_by(Schedule.date.asc(), Schedule.time.asc()).all()
+    
+    # 날짜별로 그룹화 (정렬된 리스트로 변환)
+    schedules_by_date = {}
+    for schedule in all_schedules:
+        date_key = schedule.date.isoformat()
+        if date_key not in schedules_by_date:
+            schedules_by_date[date_key] = []
+        schedules_by_date[date_key].append(schedule)
+    
+    # 날짜 순으로 정렬된 리스트로 변환
+    schedules_by_date_list = sorted(schedules_by_date.items())
     
     # 요일 이름
     weekdays = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
@@ -352,7 +373,8 @@ def schedule():
                          selected_date=selected_date,
                          weekday_name=weekday_name,
                          calendar=calendar,
-                         schedules=schedules)
+                         schedules=selected_schedules,
+                         schedules_by_date_list=schedules_by_date_list)
 
 @bp.route('/schedule/add', methods=['POST'])
 def add_schedule():

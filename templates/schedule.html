@@ -4,7 +4,10 @@
 <div class="space-y-6">
     <!-- ① 월간 캘린더 -->
     <section class="bg-white rounded-lg shadow-md p-6">
-        <h2 class="text-2xl font-bold mb-4" style="color: #1F2937;">📆 {{ current_year }}년 {{ current_month }}월</h2>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-2xl font-bold" style="color: #1F2937;">📆 {{ current_year }}년 {{ current_month }}월</h2>
+            <p class="text-sm" style="color: #6B7280;">💡 Ctrl + 클릭으로 여러 날짜 선택</p>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full border-collapse">
                 <thead>
@@ -24,7 +27,8 @@
                         {% for day_data in week %}
                         <td class="border p-4 calendar-day cursor-pointer transition hover:bg-gray-50 {% if day_data and day_data.date == today %}ring-2 ring-blue-500{% endif %} {% if day_data and day_data.date == selected_date %}calm-blue-light{% endif %}" 
                             style="border-color: #E5E7EB; {% if day_data and day_data.has_schedule %}background-color: rgba(37, 99, 235, 0.1);{% endif %}"
-                            onclick="filterByDate('{{ day_data.date if day_data else '' }}')"
+                            data-date="{{ day_data.date if day_data else '' }}"
+                            onclick="toggleDateSelection(this, '{{ day_data.date if day_data else '' }}')"
                             onmouseover="showTooltip(event, {{ day_data.schedule_count if day_data else 0 }})"
                             onmouseout="hideTooltip()">
                             {% if day_data %}
@@ -49,14 +53,28 @@
         <div id="tooltip" class="hidden absolute bg-gray-800 text-white text-xs rounded py-1 px-2 z-50"></div>
     </section>
 
+    <!-- 선택된 날짜 표시 -->
+    <section id="selectedDatesSection" class="bg-white rounded-lg shadow-md p-4 hidden">
+        <div class="flex items-center justify-between">
+            <div>
+                <span class="text-sm font-semibold" style="color: #1F2937;">선택된 날짜:</span>
+                <div id="selectedDatesList" class="flex flex-wrap gap-2 mt-2"></div>
+            </div>
+            <button onclick="clearSelectedDates()" class="text-sm px-3 py-1 rounded-md" style="background-color: #F3F4F6; color: #6B7280;">선택 해제</button>
+        </div>
+    </section>
+
     <!-- ② 일정 목록 / 추가 섹션 -->
     <section class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between mb-4">
             <div>
                 <h2 class="text-2xl font-bold" style="color: #1F2937;">📅 {{ selected_date.strftime('%m월 %d일') }} ({{ weekday_name }})</h2>
-                <p class="text-sm mt-1" style="color: #6B7280;">🗓️ 오늘의 일정</p>
+                <p class="text-sm mt-1" style="color: #6B7280;">🗓️ 선택한 날짜의 일정</p>
             </div>
-            <button onclick="openAddModal()" class="btn-primary px-4 py-2 text-white rounded-md font-medium transition">+ 일정 추가</button>
+            <div class="flex gap-2">
+                <button onclick="filterByDate('{{ selected_date.isoformat() }}')" class="px-3 py-2 border rounded-md transition" style="border-color: #E5E7EB;">날짜 보기</button>
+                <button onclick="openAddModal()" class="btn-primary px-4 py-2 text-white rounded-md font-medium transition">+ 일정 추가</button>
+            </div>
         </div>
         
         <div class="border-t pt-4" style="border-color: #E5E7EB;">
@@ -88,7 +106,64 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <p class="text-center py-8" style="color: #6B7280;">일정이 없습니다.</p>
+                <p class="text-center py-8" style="color: #6B7280;">이 날짜에 일정이 없습니다.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- 이번 달 전체 일정 목록 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-2xl font-bold" style="color: #1F2937;">📋 이번 달 일정 목록</h2>
+        </div>
+        
+        <div class="space-y-6">
+            {% if schedules_by_date_list %}
+                {% for date_str, day_schedules in schedules_by_date_list %}
+                    {% set schedule_date_obj = day_schedules[0].date %}
+                    {% set weekdays = ['월', '화', '수', '목', '금', '토', '일'] %}
+                    {% set weekday_short = weekdays[schedule_date_obj.weekday()] %}
+                    <div class="border-b pb-4 last:border-b-0" style="border-color: #E5E7EB;">
+                        <div class="flex items-center gap-2 mb-3">
+                            <h3 class="text-lg font-semibold cursor-pointer hover:text-blue-600" 
+                                style="color: #1F2937;"
+                                onclick="filterByDate('{{ date_str }}')">
+                                {{ schedule_date_obj.strftime('%m월 %d일') }} ({{ weekday_short }})
+                            </h3>
+                            <span class="text-sm px-2 py-1 rounded-md" style="background-color: #EFF6FF; color: #1E40AF;">
+                                {{ day_schedules|length }}건
+                            </span>
+                        </div>
+                        <div class="space-y-2 ml-4">
+                            {% for schedule in day_schedules %}
+                            <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition" 
+                                 onclick="showDetail({{ schedule.id }})"
+                                 style="border-left: 3px solid {{ schedule.color or '#2563EB' }};">
+                                <input type="checkbox" 
+                                       {% if schedule.completed %}checked{% endif %} 
+                                       onclick="event.stopPropagation(); toggleComplete({{ schedule.id }}, this.checked)"
+                                       class="w-4 h-4">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        {% if schedule.time %}
+                                            <span class="text-sm font-semibold">{{ schedule.time.strftime('%H:%M') }}</span>
+                                        {% endif %}
+                                        <span class="text-sm font-semibold {% if schedule.completed %}line-through text-gray-400{% endif %}" style="color: #1F2937;">{{ schedule.title }}</span>
+                                        {% if schedule.completed %}
+                                            <span class="text-green-600 text-xs">✅</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if schedule.memo %}
+                                        <p class="text-xs mt-1" style="color: #6B7280;">{{ schedule.memo }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-center py-8" style="color: #6B7280;">이번 달 일정이 없습니다.</p>
             {% endif %}
         </div>
     </section>
@@ -106,11 +181,26 @@
                 <label class="block text-sm font-medium mb-2" style="color: #1F2937;">제목 *</label>
                 <input type="text" name="title" required class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" placeholder="예: 회의, 독서, 운동">
             </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">날짜</label>
-                    <input type="date" name="date" value="{{ selected_date.isoformat() }}" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">날짜 선택</label>
+                <div class="space-y-2">
+                    <div>
+                        <label class="block text-xs mb-1" style="color: #6B7280;">시작 날짜</label>
+                        <input type="date" id="startDateInput" name="start_date" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" value="{{ selected_date.isoformat() }}" onchange="updateDateRange()">
+                    </div>
+                    <div>
+                        <label class="block text-xs mb-1" style="color: #6B7280;">종료 날짜 (선택)</label>
+                        <input type="date" id="endDateInput" name="end_date" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" onchange="updateDateRange()">
+                        <p class="text-xs mt-1" style="color: #6B7280;">종료 날짜를 선택하면 해당 기간의 모든 날짜에 일정이 추가됩니다</p>
+                    </div>
                 </div>
+                <div class="mt-2">
+                    <p class="text-xs mb-1" style="color: #6B7280;">또는 캘린더에서 Ctrl + 클릭으로 여러 날짜 선택</p>
+                    <div id="selectedDatesInForm" class="flex flex-wrap gap-2 mt-2"></div>
+                </div>
+                <input type="hidden" name="dates" id="datesInput" value="">
+            </div>
+            <div class="grid grid-cols-1 gap-4">
                 <div>
                     <label class="block text-sm font-medium mb-2" style="color: #1F2937;">시간 (선택)</label>
                     <input type="time" name="time" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
@@ -174,6 +264,137 @@
 </div>
 
 <script>
+// 선택된 날짜 관리
+let selectedDates = new Set();
+
+function toggleDateSelection(element, dateStr) {
+    if (!dateStr) return;
+    
+    // Ctrl 키를 누르고 있으면 여러 날짜 선택 모드
+    if (event.ctrlKey || event.metaKey) {
+        if (selectedDates.has(dateStr)) {
+            selectedDates.delete(dateStr);
+            element.classList.remove('ring-4', 'ring-yellow-400');
+            element.style.backgroundColor = '';
+        } else {
+            selectedDates.add(dateStr);
+            element.classList.add('ring-4', 'ring-yellow-400');
+            element.style.backgroundColor = 'rgba(251, 191, 36, 0.2)';
+        }
+        updateSelectedDatesDisplay();
+    } else {
+        // 일반 클릭은 날짜 필터링
+        filterByDate(dateStr);
+    }
+}
+
+function updateDateRange() {
+    const startDate = document.getElementById('startDateInput').value;
+    const endDate = document.getElementById('endDateInput').value;
+    const formList = document.getElementById('selectedDatesInForm');
+    const datesInput = document.getElementById('datesInput');
+    
+    if (startDate) {
+        if (endDate && endDate >= startDate) {
+            // 날짜 범위 생성
+            const dates = [];
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                dates.push(d.toISOString().split('T')[0]);
+            }
+            
+            datesInput.value = dates.join(',');
+            
+            // 표시
+            formList.innerHTML = '';
+            dates.forEach(dateStr => {
+                const date = new Date(dateStr);
+                const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`;
+                const badge = document.createElement('span');
+                badge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs';
+                badge.style.backgroundColor = '#EFF6FF';
+                badge.style.color = '#1E40AF';
+                badge.textContent = dateLabel;
+                formList.appendChild(badge);
+            });
+        } else {
+            // 단일 날짜
+            datesInput.value = startDate;
+            formList.innerHTML = '';
+        }
+    }
+}
+
+function updateSelectedDatesDisplay() {
+    const section = document.getElementById('selectedDatesSection');
+    const list = document.getElementById('selectedDatesList');
+    const formList = document.getElementById('selectedDatesInForm');
+    const datesInput = document.getElementById('datesInput');
+    
+    if (selectedDates.size > 0) {
+        section.classList.remove('hidden');
+        list.innerHTML = '';
+        formList.innerHTML = '';
+        
+        const datesArray = Array.from(selectedDates).sort();
+        datesInput.value = datesArray.join(',');
+        
+        datesArray.forEach(dateStr => {
+            const date = new Date(dateStr);
+            const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`;
+            
+            // 상단 표시
+            const badge = document.createElement('span');
+            badge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm';
+            badge.style.backgroundColor = '#FEF3C7';
+            badge.style.color = '#92400E';
+            badge.innerHTML = `${dateLabel} <button onclick="removeDate('${dateStr}')" class="ml-1">×</button>`;
+            list.appendChild(badge);
+            
+            // 폼 내부 표시
+            const formBadge = document.createElement('span');
+            formBadge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs';
+            formBadge.style.backgroundColor = '#EFF6FF';
+            formBadge.style.color = '#1E40AF';
+            formBadge.textContent = dateLabel;
+            formList.appendChild(formBadge);
+        });
+    } else {
+        section.classList.add('hidden');
+        // 날짜 범위가 설정되어 있지 않으면 datesInput 초기화
+        const startDate = document.getElementById('startDateInput')?.value;
+        const endDate = document.getElementById('endDateInput')?.value;
+        if (!startDate || (startDate && !endDate)) {
+            datesInput.value = '';
+            formList.innerHTML = '';
+        }
+    }
+}
+
+function removeDate(dateStr) {
+    selectedDates.delete(dateStr);
+    const element = document.querySelector(`[data-date="${dateStr}"]`);
+    if (element) {
+        element.classList.remove('ring-4', 'ring-yellow-400');
+        element.style.backgroundColor = '';
+    }
+    updateSelectedDatesDisplay();
+}
+
+function clearSelectedDates() {
+    selectedDates.forEach(dateStr => {
+        const element = document.querySelector(`[data-date="${dateStr}"]`);
+        if (element) {
+            element.classList.remove('ring-4', 'ring-yellow-400');
+            element.style.backgroundColor = '';
+        }
+    });
+    selectedDates.clear();
+    updateSelectedDatesDisplay();
+}
+
 function filterByDate(dateStr) {
     if (dateStr) {
         window.location.href = `/schedule?date=${dateStr}`;
@@ -195,12 +416,36 @@ function hideTooltip() {
 }
 
 function openAddModal() {
+    // 선택된 날짜가 있으면 폼에 반영
+    const datesInput = document.getElementById('datesInput');
+    const startDateInput = document.getElementById('startDateInput');
+    const endDateInput = document.getElementById('endDateInput');
+    
+    if (selectedDates.size > 0) {
+        updateSelectedDatesDisplay();
+        // 선택된 날짜가 있으면 시작 날짜는 첫 번째 날짜로 설정
+        const datesArray = Array.from(selectedDates).sort();
+        startDateInput.value = datesArray[0];
+        endDateInput.value = '';
+    } else {
+        // 선택된 날짜가 없으면 현재 선택된 날짜 사용
+        startDateInput.value = '{{ selected_date.isoformat() }}';
+        endDateInput.value = '';
+        datesInput.value = '';
+        updateDateRange();
+    }
+    
     document.getElementById('addModal').classList.remove('hidden');
 }
 
 function closeAddModal() {
     document.getElementById('addModal').classList.add('hidden');
     document.getElementById('scheduleForm').reset();
+    document.getElementById('selectedDatesInForm').innerHTML = '';
+    document.getElementById('datesInput').value = '';
+    // 시작 날짜는 현재 선택된 날짜로 초기화
+    document.getElementById('startDateInput').value = '{{ selected_date.isoformat() }}';
+    document.getElementById('endDateInput').value = '';
 }
 
 function setColorPreset(value) {
@@ -211,17 +456,70 @@ document.getElementById('scheduleForm').addEventListener('submit', async functio
     e.preventDefault();
     
     const formData = new FormData(this);
-    const response = await fetch('/schedule/add', {
-        method: 'POST',
-        body: formData
-    });
+    const datesInput = document.getElementById('datesInput').value;
+    const startDate = document.getElementById('startDateInput').value;
+    const endDate = document.getElementById('endDateInput').value;
     
-    const result = await response.json();
-    if (result.success) {
-        alert(result.message);
+    // 날짜 범위가 설정된 경우
+    let datesToAdd = [];
+    
+    if (datesInput && datesInput.trim()) {
+        // 캘린더에서 선택된 날짜 또는 날짜 범위로 생성된 날짜
+        datesToAdd = datesInput.split(',').filter(d => d.trim());
+    } else if (startDate && endDate && endDate >= startDate) {
+        // 시작 날짜와 종료 날짜로 범위 생성
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            datesToAdd.push(d.toISOString().split('T')[0]);
+        }
+    } else if (startDate) {
+        // 단일 날짜
+        datesToAdd = [startDate];
+    }
+    
+    if (datesToAdd.length === 0) {
+        alert('날짜를 선택해주세요.');
+        return;
+    }
+    
+    // 각 날짜에 대해 일정 추가
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const dateStr of datesToAdd) {
+        const singleFormData = new FormData(this);
+        singleFormData.set('date', dateStr.trim());
+        singleFormData.delete('dates');
+        singleFormData.delete('start_date');
+        singleFormData.delete('end_date');
+        
+        try {
+            const response = await fetch('/schedule/add', {
+                method: 'POST',
+                body: singleFormData
+            });
+            const result = await response.json();
+            if (result.success) {
+                successCount++;
+            } else {
+                errorCount++;
+            }
+        } catch (error) {
+            errorCount++;
+        }
+    }
+    
+    if (errorCount === 0) {
+        if (datesToAdd.length > 1) {
+            alert(`${successCount}개의 날짜에 일정이 추가되었습니다.`);
+        } else {
+            alert('일정이 추가되었습니다.');
+        }
+        clearSelectedDates();
         window.location.reload();
     } else {
-        alert('오류: ' + result.message);
+        alert(`${successCount}개 성공, ${errorCount}개 실패`);
     }
 });
 
