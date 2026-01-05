@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- ① 월간 캘린더 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold mb-4" style="color: #1F2937;">📆 {{ current_year }}년 {{ current_month }}월</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr style="background-color: #1F2937;">
+                        <th class="border p-3 text-center font-semibold text-white">월</th>
+                        <th class="border p-3 text-center font-semibold text-white">화</th>
+                        <th class="border p-3 text-center font-semibold text-white">수</th>
+                        <th class="border p-3 text-center font-semibold text-white">목</th>
+                        <th class="border p-3 text-center font-semibold text-white">금</th>
+                        <th class="border p-3 text-center font-semibold text-white">토</th>
+                        <th class="border p-3 text-center font-semibold text-white">일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for week in calendar %}
+                    <tr>
+                        {% for day_data in week %}
+                        <td class="border p-4 calendar-day cursor-pointer transition hover:bg-gray-50 {% if day_data and day_data.date == today %}calm-blue-light{% endif %} {% if day_data and day_data.date == selected_date %}ring-2 ring-blue-500{% endif %}" 
+                            style="border-color: #E5E7EB;"
+                            onclick="filterByDate('{{ day_data.date if day_data else '' }}')">
+                            {% if day_data %}
+                                <div class="text-center">
+                                    <div class="font-semibold text-lg mb-2">{{ day_data.day }}</div>
+                                    {% if day_data.income > 0 %}
+                                        <div class="text-xs income-color font-semibold">+{{ "{:,}".format(day_data.income|round|int) }}원</div>
+                                    {% endif %}
+                                    {% if day_data.expense > 0 %}
+                                        <div class="text-xs expense-color font-semibold">-{{ "{:,}".format(day_data.expense|round|int) }}원</div>
+                                    {% endif %}
+                                    {% if day_data.net != 0 %}
+                                        <div class="text-xs mt-1 {% if day_data.net > 0 %}income-color{% else %}expense-color{% endif %} font-bold">
+                                            {% if day_data.net > 0 %}+{% endif %}{{ "{:,}".format(day_data.net|round|int) }}원
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ② 요약 카드 영역 -->
+    <section class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-lg shadow-md p-6 text-center" style="background-color: #D1FAE5;">
+            <div class="text-sm mb-2" style="color: #065F46;">💰 총 수입</div>
+            <div class="text-3xl font-bold" style="color: #10B981;">{{ "{:,}".format(total_income|round|int) }}원</div>
+        </div>
+        <div class="bg-white rounded-lg shadow-md p-6 text-center" style="background-color: #FEE2E2;">
+            <div class="text-sm mb-2" style="color: #991B1B;">💸 총 지출</div>
+            <div class="text-3xl font-bold" style="color: #EF4444;">{{ "{:,}".format(total_expense|round|int) }}원</div>
+        </div>
+        <div class="bg-white rounded-lg shadow-md p-6 text-center" style="background-color: #EFF6FF;">
+            <div class="text-sm mb-2" style="color: #1E40AF;">📊 잔액</div>
+            <div class="text-3xl font-bold income-color">
+                {% if total_net >= 0 %}+{% endif %}{{ "{:,}".format(total_net|round|int) }}원
+            </div>
+        </div>
+    </section>
+
+    <!-- ③ 거래 입력 영역 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold mb-4" style="color: #1F2937;">거래 추가</h2>
+        <form id="financeForm" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">구분</label>
+                    <select name="transaction_type" id="transaction_type" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+                        <option value="expense">지출</option>
+                        <option value="income">수입</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">날짜</label>
+                    <input type="date" name="date" id="date" value="{{ today.isoformat() }}" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">항목명</label>
+                <input type="text" name="category" id="category" placeholder="예: 커피, 급여, 식비" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">금액</label>
+                <input type="number" name="amount" id="amount" placeholder="0" min="0" step="100" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">메모 (선택)</label>
+                <textarea name="memo" id="memo" rows="2" placeholder="간단한 설명" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;"></textarea>
+            </div>
+            <div class="flex gap-2">
+                <button type="submit" id="addExpenseBtn" class="btn-primary px-6 py-2 text-white rounded-md font-medium transition">+ 지출 추가</button>
+                <button type="button" id="addIncomeBtn" class="px-6 py-2 text-white rounded-md font-medium transition" style="background-color: #10B981;" onclick="setIncomeType()">+ 수입 추가</button>
+            </div>
+        </form>
+    </section>
+
+    <!-- ④ 거래 내역 목록 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-2xl font-bold" style="color: #1F2937;">거래 내역</h2>
+            <button onclick="clearFilter()" class="text-sm px-3 py-1 rounded-md" style="background-color: #F3F4F6; color: #6B7280;">전체 보기</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr style="background-color: #1F2937;">
+                        <th class="border p-3 text-left font-semibold text-white">날짜</th>
+                        <th class="border p-3 text-left font-semibold text-white">구분</th>
+                        <th class="border p-3 text-left font-semibold text-white">항목</th>
+                        <th class="border p-3 text-right font-semibold text-white">금액</th>
+                        <th class="border p-3 text-left font-semibold text-white">메모</th>
+                        <th class="border p-3 text-center font-semibold text-white">작업</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if records %}
+                        {% for record in records %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="border p-3" style="border-color: #E5E7EB;">{{ record.date.strftime('%m/%d') }}</td>
+                            <td class="border p-3" style="border-color: #E5E7EB;">
+                                <span class="px-2 py-1 rounded text-xs font-semibold {% if record.transaction_type == 'income' %}" style="background-color: #D1FAE5; color: #065F46;">수입{% else %}" style="background-color: #FEE2E2; color: #991B1B;">지출{% endif %}</span>
+                            </td>
+                            <td class="border p-3" style="border-color: #E5E7EB;">{{ record.category }}</td>
+                            <td class="border p-3 text-right font-semibold {% if record.transaction_type == 'income' %}income-color{% else %}expense-color{% endif %}" style="border-color: #E5E7EB;">
+                                {% if record.transaction_type == 'income' %}+{% else %}-{% endif %}{{ "{:,}".format(record.amount|round|int) }}원
+                            </td>
+                            <td class="border p-3 text-sm" style="border-color: #E5E7EB; color: #6B7280;">{{ record.memo or '—' }}</td>
+                            <td class="border p-3 text-center" style="border-color: #E5E7EB;">
+                                <button onclick="editRecord({{ record.id }})" class="text-xs px-2 py-1 rounded mr-1" style="background-color: #EFF6FF; color: #2563EB;">수정</button>
+                                <button onclick="deleteRecord({{ record.id }})" class="text-xs px-2 py-1 rounded" style="background-color: #FEE2E2; color: #EF4444;">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="border p-4 text-center" style="border-color: #E5E7EB; color: #6B7280;">거래 내역이 없습니다.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ⑤ 통계/분석 섹션 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold mb-4" style="color: #1F2937;">📈 통계/분석</h2>
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <h3 class="text-lg font-semibold mb-3" style="color: #1F2937;">일평균 지출</h3>
+                <div class="text-2xl font-bold expense-color">
+                    {% if days_with_expense > 0 %}
+                        {{ "{:,}".format(avg_daily_expense|round|int) }}원
+                    {% else %}
+                        0원
+                    {% endif %}
+                </div>
+                <p class="text-sm mt-1" style="color: #6B7280;">지출이 있는 {{ days_with_expense }}일 기준</p>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold mb-3" style="color: #1F2937;">거래 건수</h3>
+                <div class="text-2xl font-bold" style="color: #1F2937;">{{ records|length }}건</div>
+                <p class="text-sm mt-1" style="color: #6B7280;">
+                    수입: {{ income_count }}건 / 지출: {{ expense_count }}건
+                </p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function filterByDate(dateStr) {
+    if (dateStr) {
+        window.location.href = `/finance?date=${dateStr}`;
+    }
+}
+
+function clearFilter() {
+    window.location.href = '/finance';
+}
+
+function setIncomeType() {
+    document.getElementById('transaction_type').value = 'income';
+    document.getElementById('financeForm').dispatchEvent(new Event('submit'));
+}
+
+document.getElementById('financeForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const response = await fetch('/finance/add', {
+        method: 'POST',
+        body: formData
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+        alert(result.message);
+        window.location.reload();
+    } else {
+        alert('오류: ' + result.message);
+    }
+});
+
+async function deleteRecord(id) {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    
+    const response = await fetch(`/finance/delete/${id}`, {
+        method: 'DELETE'
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+        alert(result.message);
+        window.location.reload();
+    } else {
+        alert('오류: ' + result.message);
+    }
+}
+
+function editRecord(id) {
+    // 수정 기능은 추후 구현
+    alert('수정 기능은 추후 구현 예정입니다.');
+}
+</script>
+{% endblock %}
+

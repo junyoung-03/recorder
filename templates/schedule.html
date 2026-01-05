@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- ① 월간 캘린더 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold mb-4" style="color: #1F2937;">📆 {{ current_year }}년 {{ current_month }}월</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr style="background-color: #1F2937;">
+                        <th class="border p-3 text-center font-semibold text-white">월</th>
+                        <th class="border p-3 text-center font-semibold text-white">화</th>
+                        <th class="border p-3 text-center font-semibold text-white">수</th>
+                        <th class="border p-3 text-center font-semibold text-white">목</th>
+                        <th class="border p-3 text-center font-semibold text-white">금</th>
+                        <th class="border p-3 text-center font-semibold text-white">토</th>
+                        <th class="border p-3 text-center font-semibold text-white">일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for week in calendar %}
+                    <tr>
+                        {% for day_data in week %}
+                        <td class="border p-4 calendar-day cursor-pointer transition hover:bg-gray-50 {% if day_data and day_data.date == today %}ring-2 ring-blue-500{% endif %} {% if day_data and day_data.date == selected_date %}calm-blue-light{% endif %}" 
+                            style="border-color: #E5E7EB; {% if day_data and day_data.has_schedule %}background-color: rgba(37, 99, 235, 0.1);{% endif %}"
+                            onclick="filterByDate('{{ day_data.date if day_data else '' }}')"
+                            onmouseover="showTooltip(event, {{ day_data.schedule_count if day_data else 0 }})"
+                            onmouseout="hideTooltip()">
+                            {% if day_data %}
+                                <div class="text-center">
+                                    <div class="font-semibold text-lg mb-1">{{ day_data.day }}</div>
+                                    {% if day_data.has_schedule %}
+                                        <div class="flex justify-center gap-1 mt-1">
+                                            {% for i in range(day_data.schedule_count) %}
+                                                <div class="w-2 h-2 rounded-full" style="background-color: #2563EB;"></div>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="tooltip" class="hidden absolute bg-gray-800 text-white text-xs rounded py-1 px-2 z-50"></div>
+    </section>
+
+    <!-- ② 일정 목록 / 추가 섹션 -->
+    <section class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-2xl font-bold" style="color: #1F2937;">📅 {{ selected_date.strftime('%m월 %d일') }} ({{ weekday_name }})</h2>
+                <p class="text-sm mt-1" style="color: #6B7280;">🗓️ 오늘의 일정</p>
+            </div>
+            <button onclick="openAddModal()" class="btn-primary px-4 py-2 text-white rounded-md font-medium transition">+ 일정 추가</button>
+        </div>
+        
+        <div class="border-t pt-4" style="border-color: #E5E7EB;">
+            {% if schedules %}
+                <div class="space-y-3">
+                    {% for schedule in schedules %}
+                    <div class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition" 
+                         onclick="showDetail({{ schedule.id }})"
+                         style="border-left: 4px solid {{ schedule.color or '#2563EB' }};">
+                        <input type="checkbox" 
+                               {% if schedule.completed %}checked{% endif %} 
+                               onclick="event.stopPropagation(); toggleComplete({{ schedule.id }}, this.checked)"
+                               class="w-5 h-5">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                {% if schedule.time %}
+                                    <span class="font-semibold">{{ schedule.time.strftime('%H:%M') }}</span>
+                                {% endif %}
+                                <span class="font-semibold {% if schedule.completed %}line-through text-gray-400{% endif %}" style="color: #1F2937;">{{ schedule.title }}</span>
+                                {% if schedule.completed %}
+                                    <span class="text-green-600">✅</span>
+                                {% endif %}
+                            </div>
+                            {% if schedule.memo %}
+                                <p class="text-sm mt-1" style="color: #6B7280;">{{ schedule.memo }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-center py-8" style="color: #6B7280;">일정이 없습니다.</p>
+            {% endif %}
+        </div>
+    </section>
+</div>
+
+<!-- 일정 추가 모달 -->
+<div id="addModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold" style="color: #1F2937;">일정 추가</h3>
+            <button onclick="closeAddModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <form id="scheduleForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">제목 *</label>
+                <input type="text" name="title" required class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" placeholder="예: 회의, 독서, 운동">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">날짜</label>
+                    <input type="date" name="date" value="{{ selected_date.isoformat() }}" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">시간 (선택)</label>
+                    <input type="time" name="time" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">메모 / 장소 (선택)</label>
+                <textarea name="memo" rows="2" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;" placeholder="프로젝트 공유"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">카테고리</label>
+                    <select name="category" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+                        <option value="">선택 안함</option>
+                        <option value="업무">업무</option>
+                        <option value="개인">개인</option>
+                        <option value="건강">건강</option>
+                        <option value="공부">공부</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: #1F2937;">반복</label>
+                    <select name="repeat_type" class="w-full p-2 border rounded-md" style="border-color: #E5E7EB;">
+                        <option value="none">없음</option>
+                        <option value="weekly">매주</option>
+                        <option value="monthly">매월</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-2" style="color: #1F2937;">색상</label>
+                <div class="flex gap-2">
+                    <input type="color" name="color" value="#2563EB" class="w-16 h-10 border rounded">
+                    <select name="color_preset" onchange="setColorPreset(this.value)" class="flex-1 p-2 border rounded-md" style="border-color: #E5E7EB;">
+                        <option value="#2563EB">업무 (파랑)</option>
+                        <option value="#10B981">개인 (초록)</option>
+                        <option value="#8B5CF6">건강 (보라)</option>
+                        <option value="#F59E0B">공부 (주황)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button type="submit" class="btn-primary flex-1 px-4 py-2 text-white rounded-md font-medium transition">추가</button>
+                <button type="button" onclick="closeAddModal()" class="px-4 py-2 border rounded-md transition" style="border-color: #E5E7EB;">취소</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 일정 상세 모달 -->
+<div id="detailModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold" style="color: #1F2937;">일정 상세</h3>
+            <button onclick="closeDetailModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <div id="detailContent" class="space-y-4">
+            <!-- 동적으로 채워짐 -->
+        </div>
+    </div>
+</div>
+
+<script>
+function filterByDate(dateStr) {
+    if (dateStr) {
+        window.location.href = `/schedule?date=${dateStr}`;
+    }
+}
+
+function showTooltip(event, count) {
+    if (count > 0) {
+        const tooltip = document.getElementById('tooltip');
+        tooltip.textContent = `일정 ${count}건`;
+        tooltip.classList.remove('hidden');
+        tooltip.style.left = event.pageX + 10 + 'px';
+        tooltip.style.top = event.pageY + 10 + 'px';
+    }
+}
+
+function hideTooltip() {
+    document.getElementById('tooltip').classList.add('hidden');
+}
+
+function openAddModal() {
+    document.getElementById('addModal').classList.remove('hidden');
+}
+
+function closeAddModal() {
+    document.getElementById('addModal').classList.add('hidden');
+    document.getElementById('scheduleForm').reset();
+}
+
+function setColorPreset(value) {
+    document.querySelector('input[name="color"]').value = value;
+}
+
+document.getElementById('scheduleForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const response = await fetch('/schedule/add', {
+        method: 'POST',
+        body: formData
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+        alert(result.message);
+        window.location.reload();
+    } else {
+        alert('오류: ' + result.message);
+    }
+});
+
+async function toggleComplete(id, completed) {
+    const response = await fetch(`/schedule/update/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({completed: completed})
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+        window.location.reload();
+    }
+}
+
+async function showDetail(id) {
+    // 상세 정보는 서버에서 가져오거나 현재 페이지의 데이터 사용
+    const response = await fetch(`/schedule/detail/${id}`);
+    if (response.ok) {
+        const schedule = await response.json();
+        const content = `
+            <table class="w-full">
+                <tr><td class="font-semibold py-2" style="color: #1F2937;">제목</td><td>${schedule.title}</td></tr>
+                <tr><td class="font-semibold py-2" style="color: #1F2937;">시간</td><td>${schedule.time || '—'}</td></tr>
+                <tr><td class="font-semibold py-2" style="color: #1F2937;">메모</td><td>${schedule.memo || '—'}</td></tr>
+                <tr><td class="font-semibold py-2" style="color: #1F2937;">상태</td><td>${schedule.completed ? '✅ 완료' : '☐ 미완료'}</td></tr>
+            </table>
+            <div class="flex gap-2 mt-4">
+                <button onclick="editSchedule(${schedule.id})" class="btn-primary px-4 py-2 text-white rounded-md">수정</button>
+                <button onclick="deleteSchedule(${schedule.id})" class="px-4 py-2 border rounded-md" style="border-color: #E5E7EB;">삭제</button>
+            </div>
+        `;
+        document.getElementById('detailContent').innerHTML = content;
+        document.getElementById('detailModal').classList.remove('hidden');
+    }
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').classList.add('hidden');
+}
+
+async function deleteSchedule(id) {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    
+    const response = await fetch(`/schedule/delete/${id}`, {
+        method: 'DELETE'
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+        alert(result.message);
+        window.location.reload();
+    } else {
+        alert('오류: ' + result.message);
+    }
+}
+
+function editSchedule(id) {
+    // 수정 기능은 추후 구현
+    alert('수정 기능은 추후 구현 예정입니다.');
+}
+</script>
+{% endblock %}
+
