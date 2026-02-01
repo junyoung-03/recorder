@@ -1,9 +1,11 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
 from pathlib import Path
 import os
 
 db = SQLAlchemy()
+login_manager = LoginManager()
 
 def create_app():
     # 프로젝트 루트 디렉토리
@@ -25,6 +27,8 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'dev-secret-key'
     
     db.init_app(app)
+    login_manager.init_app(app)
+    login_manager.login_view = 'main.login'
     
     from app import routes, models
     app.register_blueprint(routes.bp)
@@ -35,7 +39,7 @@ def create_app():
             # 기존 테이블 확인 및 누락된 테이블 생성
             db.create_all()
             # 모든 모델 import 확인
-            from app.models import FinanceRecord, Schedule
+            from app.models import FinanceRecord, Schedule, User, MealRecord, ExercisePlan, ExerciseRecord, Journal, Friendship, Comment, Like, BodyRecord, Todo
             print("데이터베이스 테이블 확인 완료")
         except Exception as e:
             print(f"데이터베이스 초기화 중 오류: {e}")
@@ -43,5 +47,11 @@ def create_app():
             traceback.print_exc()
     
     return app
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    from app.models import User
+    return User.query.get(int(user_id))
 
 

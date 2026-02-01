@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-6">
+    <div class="flex-1 space-y-6">
+        <section class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold" style="color: #1F2937;">📝 일기</h2>
+                <a href="/journal/new" class="btn-primary px-4 py-2 text-white rounded-md font-medium transition">+ 새 글</a>
+            </div>
+            {% if journals %}
+                <div class="space-y-4">
+                    {% for journal in journals %}
+                    <div class="border rounded-lg p-4" style="border-color: #E5E7EB;">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm" style="color: #6B7280;">{{ journal.date.strftime('%Y-%m-%d') }}</p>
+                                <h3 class="text-lg font-semibold" style="color: #1F2937;">
+                                    <a href="/journal/{{ journal.id }}" class="hover:underline">
+                                        {{ journal.title or '제목 없음' }}
+                                    </a>
+                                </h3>
+                            </div>
+                            <span class="text-xs px-2 py-1 rounded" style="background-color: #EFF6FF; color: #1E40AF;">
+                                {{ journal.visibility }}
+                            </span>
+                        </div>
+                        <p class="text-sm mt-2" style="color: #6B7280;">
+                            {{ journal.content[:120] }}{% if journal.content|length > 120 %}...{% endif %}
+                        </p>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-center py-8" style="color: #6B7280;">작성된 일기가 없습니다.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <aside class="w-full lg:w-64">
+        <div class="bg-white rounded-lg shadow-md p-4">
+            <h3 class="text-lg font-bold mb-3" style="color: #1F2937;">친구 목록</h3>
+            {% if friends_list %}
+                <div class="space-y-2">
+                    {% for friend in friends_list %}
+                    <a href="/friend/{{ friend.id }}/journal" target="_blank" class="flex items-center gap-2 p-2 rounded-md bg-gray-50 hover:bg-gray-100 transition">
+                        <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm">🙂</div>
+                        <span class="text-sm">{{ friend.nickname or friend.username }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-sm" style="color: #6B7280;">친구가 없습니다.</p>
+            {% endif %}
+        </div>
+    </aside>
+</div>
+{% endblock %}
+

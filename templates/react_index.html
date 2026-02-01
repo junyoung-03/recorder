@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recorder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% for css_file in css_files %}
+    <link rel="stylesheet" href="/{{ css_file }}" />
+    {% endfor %}
+    <script>
+      window.__BOOTSTRAP__ = {{ initial_data | tojson }};
+    </script>
+  </head>
+  <body style="background-color: #F9FAFB;">
+    <div id="root"></div>
+    {% for js_file in js_files %}
+    <script type="module" src="/{{ js_file }}"></script>
+    {% endfor %}
+  </body>
+</html>
+
+
+
+
