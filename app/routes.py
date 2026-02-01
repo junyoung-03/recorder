@@ -117,18 +117,10 @@ def serialize_exercise_cards(cards):
 
 
 def serialize_body_record(record):
-    # 이미지 URL 처리 (R2 URL 또는 로컬 경로)
-    image_url = None
-    if record.image_path:
-        if record.image_path.startswith('http'):
-            image_url = record.image_path  # R2 URL
-        else:
-            image_url = f'/media/body/{record.id}'  # 로컬 경로
     return {
         'id': record.id,
         'date': record.date.isoformat(),
         'image_path': record.image_path,
-        'imageUrl': image_url,
         'memo': record.memo
     }
 
@@ -144,10 +136,6 @@ def serialize_meal_comment(comment, can_delete):
 
 def serialize_meal(meal, liked=False, can_delete_comment_ids=None):
     can_delete_comment_ids = can_delete_comment_ids or set()
-    # 이미지 URL 처리 (R2 URL 또는 로컬 경로)
-    image_url = meal.image_path
-    if meal.image_path and not meal.image_path.startswith('http'):
-        image_url = f'/media/meals/{meal.id}'
     return {
         'id': meal.id,
         'date': meal.date.isoformat(),
@@ -155,7 +143,6 @@ def serialize_meal(meal, liked=False, can_delete_comment_ids=None):
         'food_name': meal.food_name,
         'calories': meal.calories,
         'image_path': meal.image_path,
-        'imageUrl': image_url,
         'memo': meal.memo,
         'visibility': meal.visibility,
         'likes': [like.id for like in meal.likes],
@@ -204,6 +191,9 @@ def ensure_default_journal_categories(user_id):
     categories = JournalCategory.query.filter(
         JournalCategory.user_id == user_id
     ).order_by(JournalCategory.created_at.asc()).all()
+    if categories:
+        return categories
+    # No auto-created defaults; uncategorized handled in UI.
     return categories
 
 
@@ -364,14 +354,6 @@ def register():
             error = '아이디와 비밀번호는 필수입니다.'
         elif password != password_confirm:
             error = '비밀번호가 일치하지 않습니다.'
-        elif len(password) < 8:
-            error = '비밀번호는 8자 이상이어야 합니다.'
-        elif not any(c.isalpha() for c in password):
-            error = '비밀번호에 영문이 포함되어야 합니다.'
-        elif not any(c.isdigit() for c in password):
-            error = '비밀번호에 숫자가 포함되어야 합니다.'
-        elif not any(c in '!@#$%^&*(),.?":{}|<>' for c in password):
-            error = '비밀번호에 특수문자가 포함되어야 합니다.'
         elif User.query.filter_by(username=username).first():
             error = '이미 사용 중인 아이디입니다.'
         else:
@@ -522,6 +504,9 @@ def finance():
             selected_date = today
     else:
         selected_date = today
+    if not year_param and not month_param and selected_date:
+        current_year = selected_date.year
+        current_month = selected_date.month
     
     # 캘린더 데이터
     calendar = get_calendar_data_from_db(current_year, current_month)
@@ -600,20 +585,11 @@ def finance():
     income_count = len([record for record in records if record.transaction_type == 'income'])
     expense_count = len(expense_records)
     
-    # 요일 이름 (선택된 날짜 기준)
-    weekdays = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
-    weekday_name = weekdays[selected_date.weekday()]
-    
-    # 선택된 날짜 포맷 (홈과 동일)
-    selected_date_formatted = f"{selected_date.day}일"
-    
     return render_react('finance', {
         'currentYear': current_year,
         'currentMonth': current_month,
         'today': today.isoformat(),
         'selectedDate': selected_date.isoformat(),
-        'selectedDateFormatted': selected_date_formatted,
-        'weekdayName': weekday_name,
         'calendar': serialize_calendar(calendar),
         'totalIncome': total_income,
         'totalExpense': total_expense,
@@ -936,9 +912,6 @@ def schedule():
     weekdays = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
     weekday_name = weekdays[selected_date.weekday()]
     
-    # 선택된 날짜 포맷 (홈과 동일)
-    selected_date_formatted = f"{selected_date.day}일"
-    
     todo_cards = build_todo_cards(current_user.id, today, 4)
 
     serialized_schedules_by_date = [
@@ -950,7 +923,6 @@ def schedule():
         'currentMonth': current_month,
         'today': today.isoformat(),
         'selectedDate': selected_date.isoformat(),
-        'selectedDateFormatted': selected_date_formatted,
         'weekdayName': weekday_name,
         'calendar': serialize_calendar(calendar),
         'schedules': [serialize_schedule(schedule) for schedule in selected_schedules],
@@ -1232,12 +1204,6 @@ def meal_image(meal_id):
         return ('', 403)
     if not meal.image_path:
         return ('', 404)
-    
-    # R2 URL인 경우 리다이렉트
-    if meal.image_path.startswith('http'):
-        return redirect(meal.image_path)
-    
-    # 로컬 파일인 경우
     image_file = Path(__file__).parent.parent / 'static' / meal.image_path
     if not image_file.exists():
         return ('', 404)
@@ -1254,12 +1220,6 @@ def body_image(record_id):
     ).first_or_404()
     if not record.image_path:
         return ('', 404)
-    
-    # R2 URL인 경우 리다이렉트
-    if record.image_path.startswith('http'):
-        return redirect(record.image_path)
-    
-    # 로컬 파일인 경우
     image_file = Path(__file__).parent.parent / 'static' / record.image_path
     if not image_file.exists():
         return ('', 404)
@@ -1727,11 +1687,9 @@ def exercise():
     
     record_cards = build_exercise_cards(current_user.id, today)
     
-    # 몸 기록: 최신 4개만 (사진이 있는 것만)
     body_records = BodyRecord.query.filter(
-        BodyRecord.user_id == current_user.id,
-        BodyRecord.image_path.isnot(None)
-    ).order_by(BodyRecord.date.desc(), BodyRecord.created_at.desc()).limit(4).all()
+        BodyRecord.user_id == current_user.id
+    ).order_by(BodyRecord.date.desc(), BodyRecord.created_at.desc()).all()
 
     today_meals = MealRecord.query.filter(
         MealRecord.user_id == current_user.id,
@@ -1943,23 +1901,17 @@ def add_meal_record():
         calories = int(request.form.get('calories', 0)) if request.form.get('calories') else None
         memo = request.form.get('memo', '')
         
-        # 파일 업로드 처리 (R2 또는 로컬)
+        # 파일 업로드 처리
         image_path = None
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename and allowed_file(file.filename):
-                try:
-                    from app.storage import save_image_to_storage
-                    image_path = save_image_to_storage(file, current_user.id, 'meals', meal_date)
-                except Exception as e:
-                    # R2 실패 시 로컬 저장소로 폴백
-                    print(f"Storage error: {e}, using local storage")
-                    filename = secure_filename(file.filename)
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f"{datetime.strptime(meal_date, '%Y-%m-%d').date()}_{meal_type}_{timestamp}_{filename}"
-                    filepath = user_folder / filename
-                    file.save(str(filepath))
-                    image_path = f"uploads/meals/{current_user.id}/{filename}"
+                filename = secure_filename(file.filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{datetime.strptime(meal_date, '%Y-%m-%d').date()}_{meal_type}_{timestamp}_{filename}"
+                filepath = user_folder / filename
+                file.save(str(filepath))
+                image_path = f"uploads/meals/{current_user.id}/{filename}"
         
         visibility = request.form.get('visibility', 'private')
         meal = MealRecord(
@@ -1990,17 +1942,11 @@ def delete_meal_record(meal_id):
             MealRecord.id == meal_id,
             MealRecord.user_id == current_user.id
         ).first_or_404()
-        # 이미지 파일 삭제 (R2 또는 로컬)
+        # 이미지 파일 삭제
         if meal.image_path:
-            try:
-                from app.storage import delete_image_from_storage
-                delete_image_from_storage(meal.image_path)
-            except Exception as e:
-                print(f"Storage delete error: {e}")
-                # 로컬 파일 삭제 시도
-                image_file = Path(__file__).parent.parent / 'static' / meal.image_path
-                if image_file.exists():
-                    image_file.unlink()
+            image_file = Path(__file__).parent.parent / 'static' / meal.image_path
+            if image_file.exists():
+                image_file.unlink()
         db.session.delete(meal)
         db.session.commit()
         return jsonify({'success': True, 'message': '식단 기록이 삭제되었습니다.'})
@@ -2019,23 +1965,16 @@ def add_body_record():
         record_date = request.form.get('date', date.today().isoformat())
         memo = request.form.get('memo', '')
 
-        # 파일 업로드 처리 (R2 또는 로컬)
         image_path = None
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename and allowed_file(file.filename):
-                try:
-                    from app.storage import save_image_to_storage
-                    image_path = save_image_to_storage(file, current_user.id, 'body', record_date)
-                except Exception as e:
-                    # R2 실패 시 로컬 저장소로 폴백
-                    print(f"Storage error: {e}, using local storage")
-                    filename = secure_filename(file.filename)
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f"{record_date}_{timestamp}_{filename}"
-                    filepath = user_folder / filename
-                    file.save(str(filepath))
-                    image_path = f"uploads/body/{current_user.id}/{filename}"
+                filename = secure_filename(file.filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{record_date}_{timestamp}_{filename}"
+                filepath = user_folder / filename
+                file.save(str(filepath))
+                image_path = f"uploads/body/{current_user.id}/{filename}"
 
         record = BodyRecord(
             user_id=current_user.id,
@@ -2060,36 +1999,16 @@ def delete_body_record(record_id):
             BodyRecord.id == record_id,
             BodyRecord.user_id == current_user.id
         ).first_or_404()
-        # 이미지 파일 삭제 (R2 또는 로컬)
         if record.image_path:
-            try:
-                from app.storage import delete_image_from_storage
-                delete_image_from_storage(record.image_path)
-            except Exception as e:
-                print(f"Storage delete error: {e}")
-                # 로컬 파일 삭제 시도
-                image_file = Path(__file__).parent.parent / 'static' / record.image_path
-                if image_file.exists():
-                    image_file.unlink()
+            image_file = Path(__file__).parent.parent / 'static' / record.image_path
+            if image_file.exists():
+                image_file.unlink()
         db.session.delete(record)
         db.session.commit()
         return jsonify({'success': True, 'message': '몸 기록이 삭제되었습니다.'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
-
-@bp.route('/exercise/body/all')
-@login_required
-def body_records_all():
-    """몸 기록 전체보기"""
-    body_records = BodyRecord.query.filter(
-        BodyRecord.user_id == current_user.id,
-        BodyRecord.image_path.isnot(None)
-    ).order_by(BodyRecord.date.desc(), BodyRecord.created_at.desc()).all()
-    
-    return render_react('bodyRecordsAll', {
-        'bodyRecords': [serialize_body_record(record) for record in body_records]
-    }, active_path='/exercise')
 
 @bp.route('/uploads/meals/<filename>')
 @login_required
