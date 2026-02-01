@@ -36,6 +36,12 @@ function BodyRecordsAllPage({ bodyRecords = [] }) {
 
   const selectedRecord1 = bodyRecords.find((r) => r.id === selectedRecords[0]);
   const selectedRecord2 = bodyRecords.find((r) => r.id === selectedRecords[1]);
+  const getImageSrc = (record) => {
+    if (!record) return null;
+    if (record.imageUrl) return record.imageUrl;
+    if (record.image_path && record.image_path.startsWith('http')) return record.image_path;
+    return `/media/body/${record.id}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -88,9 +94,9 @@ function BodyRecordsAllPage({ bodyRecords = [] }) {
                     <div className="text-xs mt-1" style={{ color: '#6B7280' }}>{selectedRecord1.memo}</div>
                   )}
                 </div>
-                {selectedRecord1.image_path ? (
+                {selectedRecord1.image_path || selectedRecord1.imageUrl ? (
                   <img
-                    src={`/media/body/${selectedRecord1.id}`}
+                    src={getImageSrc(selectedRecord1)}
                     alt="body record 1"
                     className="w-full h-auto object-contain"
                     style={{ maxHeight: '600px' }}
@@ -106,9 +112,9 @@ function BodyRecordsAllPage({ bodyRecords = [] }) {
                     <div className="text-xs mt-1" style={{ color: '#6B7280' }}>{selectedRecord2.memo}</div>
                   )}
                 </div>
-                {selectedRecord2.image_path ? (
+                {selectedRecord2.image_path || selectedRecord2.imageUrl ? (
                   <img
-                    src={`/media/body/${selectedRecord2.id}`}
+                    src={getImageSrc(selectedRecord2)}
                     alt="body record 2"
                     className="w-full h-auto object-contain"
                     style={{ maxHeight: '600px' }}
@@ -133,9 +139,9 @@ function BodyRecordsAllPage({ bodyRecords = [] }) {
                     style={{ borderColor: isSelected ? '#3B82F6' : '#E5E7EB' }}
                     onClick={() => handleRecordClick(record.id)}
                   >
-                    {record.image_path ? (
+                    {record.image_path || record.imageUrl ? (
                       <img
-                        src={`/media/body/${record.id}`}
+                        src={getImageSrc(record)}
                         alt="body"
                         className="w-full h-48 object-cover"
                       />

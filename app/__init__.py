@@ -27,7 +27,17 @@ def create_app():
     # 데이터베이스 설정
     instance_dir = basedir / 'instance'
     instance_dir.mkdir(exist_ok=True)
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{instance_dir / "database.db"}'
+    database_url = os.environ.get('DATABASE_URL') or os.environ.get('SUPABASE_DB_URL')
+    if database_url:
+        # Supabase Postgres URL 지원 (postgres -> postgresql)
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_pre_ping': True
+        }
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{instance_dir / "database.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'dev-secret-key'
     

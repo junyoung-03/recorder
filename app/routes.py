@@ -4,9 +4,9 @@ from calendar import monthrange
 import random
 import os
 import json
-from werkzeug.utils import secure_filename
 from pathlib import Path
 from app import db
+from app.storage import save_image_to_storage, delete_image_from_storage
 from app.models import FinanceRecord, Schedule, ExercisePlan, ExerciseRecord, MealRecord, User, Journal, Friendship, Comment, Like, BodyRecord, Todo, JournalCategory
 from sqlalchemy import or_, and_
 from flask_login import login_user, logout_user, login_required, current_user
@@ -117,10 +117,12 @@ def serialize_exercise_cards(cards):
 
 
 def serialize_body_record(record):
+    image_url = record.image_path if record.image_path and record.image_path.startswith('http') else None
     return {
         'id': record.id,
         'date': record.date.isoformat(),
         'image_path': record.image_path,
+        'imageUrl': image_url,
         'memo': record.memo
     }
 
@@ -136,6 +138,7 @@ def serialize_meal_comment(comment, can_delete):
 
 def serialize_meal(meal, liked=False, can_delete_comment_ids=None):
     can_delete_comment_ids = can_delete_comment_ids or set()
+    image_url = meal.image_path if meal.image_path and meal.image_path.startswith('http') else None
     return {
         'id': meal.id,
         'date': meal.date.isoformat(),
@@ -143,6 +146,7 @@ def serialize_meal(meal, liked=False, can_delete_comment_ids=None):
         'food_name': meal.food_name,
         'calories': meal.calories,
         'image_path': meal.image_path,
+        'imageUrl': image_url,
         'memo': meal.memo,
         'visibility': meal.visibility,
         'likes': [like.id for like in meal.likes],
@@ -1204,6 +1208,8 @@ def meal_image(meal_id):
         return ('', 403)
     if not meal.image_path:
         return ('', 404)
+    if meal.image_path.startswith('http'):
+        return redirect(meal.image_path)
     image_file = Path(__file__).parent.parent / 'static' / meal.image_path
     if not image_file.exists():
         return ('', 404)
@@ -1220,6 +1226,8 @@ def body_image(record_id):
     ).first_or_404()
     if not record.image_path:
         return ('', 404)
+    if record.image_path.startswith('http'):
+        return redirect(record.image_path)
     image_file = Path(__file__).parent.parent / 'static' / record.image_path
     if not image_file.exists():
         return ('', 404)
@@ -1892,9 +1900,6 @@ def update_exercise_record(record_id):
 def add_meal_record():
     """식단 기록 추가"""
     try:
-        user_folder = MEAL_UPLOAD_FOLDER / str(current_user.id)
-        user_folder.mkdir(parents=True, exist_ok=True)
-        
         meal_date = request.form.get('date', date.today().isoformat())
         meal_type = request.form.get('meal_type', '')
         food_name = request.form.get('food_name', '')
@@ -1906,12 +1911,7 @@ def add_meal_record():
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"{datetime.strptime(meal_date, '%Y-%m-%d').date()}_{meal_type}_{timestamp}_{filename}"
-                filepath = user_folder / filename
-                file.save(str(filepath))
-                image_path = f"uploads/meals/{current_user.id}/{filename}"
+                image_path = save_image_to_storage(file, current_user.id, 'meals', meal_date)
         
         visibility = request.form.get('visibility', 'private')
         meal = MealRecord(
@@ -1944,9 +1944,7 @@ def delete_meal_record(meal_id):
         ).first_or_404()
         # 이미지 파일 삭제
         if meal.image_path:
-            image_file = Path(__file__).parent.parent / 'static' / meal.image_path
-            if image_file.exists():
-                image_file.unlink()
+            delete_image_from_storage(meal.image_path)
         db.session.delete(meal)
         db.session.commit()
         return jsonify({'success': True, 'message': '식단 기록이 삭제되었습니다.'})
@@ -1959,9 +1957,6 @@ def delete_meal_record(meal_id):
 def add_body_record():
     """몸 기록 추가"""
     try:
-        user_folder = BODY_UPLOAD_FOLDER / str(current_user.id)
-        user_folder.mkdir(parents=True, exist_ok=True)
-
         record_date = request.form.get('date', date.today().isoformat())
         memo = request.form.get('memo', '')
 
@@ -1969,12 +1964,7 @@ def add_body_record():
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"{record_date}_{timestamp}_{filename}"
-                filepath = user_folder / filename
-                file.save(str(filepath))
-                image_path = f"uploads/body/{current_user.id}/{filename}"
+                image_path = save_image_to_storage(file, current_user.id, 'body', record_date)
 
         record = BodyRecord(
             user_id=current_user.id,
@@ -2000,9 +1990,7 @@ def delete_body_record(record_id):
             BodyRecord.user_id == current_user.id
         ).first_or_404()
         if record.image_path:
-            image_file = Path(__file__).parent.parent / 'static' / record.image_path
-            if image_file.exists():
-                image_file.unlink()
+            delete_image_from_storage(record.image_path)
         db.session.delete(record)
         db.session.commit()
         return jsonify({'success': True, 'message': '몸 기록이 삭제되었습니다.'})

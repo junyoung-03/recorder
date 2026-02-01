@@ -4,9 +4,11 @@ Cloudflare R2 저장소 유틸리티
 """
 import os
 import boto3
+import requests
 from botocore.config import Config
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import quote
 from werkzeug.utils import secure_filename
 
 class R2Storage:
@@ -86,8 +88,60 @@ class R2Storage:
             return False
 
 
+class SupabaseStorage:
+    def __init__(self):
+        self.url = os.environ.get('SUPABASE_URL')
+        self.service_key = os.environ.get('SUPABASE_SERVICE_KEY')
+        self.bucket_name = os.environ.get('SUPABASE_BUCKET', 'photos')
+        self.public_url = os.environ.get('SUPABASE_PUBLIC_URL')
+        if not self.public_url and self.url:
+            self.public_url = f"{self.url}/storage/v1/object/public/{self.bucket_name}"
+
+        if not all([self.url, self.service_key, self.bucket_name]):
+            raise ValueError("Supabase storage credentials not found in environment variables")
+
+    def _headers(self, content_type: str = None):
+        headers = {
+            'Authorization': f'Bearer {self.service_key}',
+            'apikey': self.service_key
+        }
+        if content_type:
+            headers['Content-Type'] = content_type
+        return headers
+
+    def upload_file(self, file_obj, key: str, content_type: str = None) -> str:
+        safe_key = quote(key, safe='/')
+        url = f"{self.url}/storage/v1/object/{self.bucket_name}/{safe_key}"
+        data = file_obj.read()
+        headers = self._headers(content_type or 'application/octet-stream')
+        headers['x-upsert'] = 'true'
+        response = requests.put(url, data=data, headers=headers, timeout=30)
+        if response.status_code not in (200, 201):
+            raise ValueError(f"Supabase upload failed: {response.status_code} {response.text}")
+        return f"{self.public_url}/{key}"
+
+    def delete_file(self, key: str) -> bool:
+        safe_key = quote(key, safe='/')
+        url = f"{self.url}/storage/v1/object/{self.bucket_name}/{safe_key}"
+        response = requests.delete(url, headers=self._headers(), timeout=30)
+        return response.status_code in (200, 204)
+
+    def file_exists(self, key: str) -> bool:
+        safe_key = quote(key, safe='/')
+        url = f"{self.url}/storage/v1/object/{self.bucket_name}/{safe_key}"
+        response = requests.head(url, headers=self._headers(), timeout=10)
+        return response.status_code == 200
+
+
 def get_storage():
     """저장소 인스턴스 반환 (R2 또는 로컬)"""
+    # 환경 변수가 설정되어 있으면 Supabase 사용
+    if os.environ.get('SUPABASE_URL') and os.environ.get('SUPABASE_SERVICE_KEY'):
+        try:
+            return SupabaseStorage()
+        except Exception as e:
+            print(f"Supabase 초기화 실패, 로컬 저장소 사용: {e}")
+            return None
     # 환경 변수가 설정되어 있으면 R2 사용
     if os.environ.get('R2_ACCOUNT_ID'):
         try:
@@ -156,7 +210,7 @@ def delete_image_from_storage(image_path: str) -> bool:
     """
     storage = get_storage()
     
-    # R2 URL인 경우
+    # Supabase/R2 URL인 경우
     if storage and image_path.startswith('http'):
         # URL에서 key 추출
         if storage.public_url and image_path.startswith(storage.public_url):
