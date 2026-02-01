@@ -19,6 +19,8 @@ function FinancePage({
   currentMonth,
   today,
   selectedDate,
+  selectedDateFormatted,
+  weekdayName,
   calendar = [],
   totalIncome = 0,
   totalExpense = 0,
@@ -118,9 +120,14 @@ function FinancePage({
   return (
     <div className="space-y-6">
       <section className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: '#1F2937' }}>
-          📆 {currentYear}년 {currentMonth}월
-        </h2>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-2xl font-bold" style={{ color: '#1F2937' }}>
+            📆 {currentYear}년 {currentMonth}월
+          </h2>
+          <span className="text-2xl font-bold" style={{ color: '#1F2937' }}>
+            {selectedDateFormatted} {weekdayName}
+          </span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>

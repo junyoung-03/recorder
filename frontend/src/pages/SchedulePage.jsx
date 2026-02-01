@@ -30,6 +30,7 @@ function SchedulePage({
   currentMonth,
   today,
   selectedDate,
+  selectedDateFormatted,
   weekdayName,
   calendar = [],
   schedules = [],
@@ -183,12 +184,15 @@ function SchedulePage({
   return (
     <div className="space-y-6">
       <section className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3 mb-4">
           <h2 className="text-2xl font-bold" style={{ color: '#1F2937' }}>
             📆 {currentYear}년 {currentMonth}월
           </h2>
-          <p className="text-sm" style={{ color: '#6B7280' }}>💡 Ctrl + 클릭으로 여러 날짜 선택</p>
+          <span className="text-2xl font-bold" style={{ color: '#1F2937' }}>
+            {selectedDateFormatted} {weekdayName}
+          </span>
         </div>
+        <p className="text-sm mb-4" style={{ color: '#6B7280' }}>💡 Ctrl + 클릭으로 여러 날짜 선택</p>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>

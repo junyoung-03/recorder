@@ -3,6 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+# .env 파일 로드 (프로젝트 루트에서)
+basedir = Path(__file__).parent.parent
+load_dotenv(basedir / '.env')
 
 db = SQLAlchemy()
 login_manager = LoginManager()

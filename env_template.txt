@@ -1,0 +1,5 @@
+R2_ACCOUNT_ID=your-account-id-here
+R2_ACCESS_KEY_ID=your-access-key-id-here
+R2_SECRET_ACCESS_KEY=your-secret-access-key-here
+R2_BUCKET_NAME=recorder-images
+R2_PUBLIC_URL=https://pub-xxxxx.r2.dev

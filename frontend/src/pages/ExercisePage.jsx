@@ -174,33 +174,39 @@ function ExercisePage({ today, recordCards = [], bodyRecords = [] }) {
       <section className="bg-white rounded-lg shadow-md p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold" style={{ color: '#1F2937' }}>📸 나의 몸 기록</h2>
-          <button onClick={() => setShowBodyModal(true)} className="btn-primary px-4 py-2 text-white rounded-md font-medium transition">
-            + 기록 추가
-          </button>
+          <div className="flex gap-2">
+            <a href="/exercise/body/all" className="px-4 py-2 border rounded-md transition" style={{ borderColor: '#E5E7EB' }}>
+              전체보기
+            </a>
+            <button onClick={() => setShowBodyModal(true)} className="btn-primary px-4 py-2 text-white rounded-md font-medium transition">
+              + 기록 추가
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="grid grid-cols-4 gap-4">
           {bodyRecords.length > 0 ? (
-            bodyRecords.map((record) => (
-              <div key={record.id} className="flex items-start gap-4 p-4 rounded-lg border" style={{ borderColor: '#E5E7EB' }}>
-                <div className="flex-shrink-0">
-                  {record.image_path || record.imageUrl ? (
-                    <img src={record.imageUrl || `/media/body/${record.id}`} alt="body" className="w-20 h-20 object-cover rounded-md" />
-                  ) : (
-                    <div className="w-20 h-20 bg-gray-200 rounded-md flex items-center justify-center text-2xl">📷</div>
+            [...bodyRecords].reverse().map((record) => (
+              <div key={record.id} className="border rounded-lg overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                {record.image_path || record.imageUrl ? (
+                  <img 
+                    src={record.imageUrl || `/media/body/${record.id}`} 
+                    alt="body" 
+                    className="w-full h-48 object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-4xl">📷</div>
+                )}
+                <div className="p-3">
+                  <div className="text-xs mb-1" style={{ color: '#6B7280' }}>{record.date}</div>
+                  {record.memo && (
+                    <p className="text-xs truncate" style={{ color: '#6B7280' }} title={record.memo}>{record.memo}</p>
                   )}
                 </div>
-                <div className="flex-1">
-                  <div className="text-sm mb-1" style={{ color: '#6B7280' }}>{record.date}</div>
-                  {record.memo && <p className="text-sm" style={{ color: '#6B7280' }}>{record.memo}</p>}
-                </div>
-                <button onClick={() => deleteBodyRecord(record.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}>
-                  삭제
-                </button>
               </div>
             ))
           ) : (
-            <p className="text-center py-8" style={{ color: '#6B7280' }}>몸 기록이 없습니다.</p>
+            <p className="col-span-4 text-center py-8" style={{ color: '#6B7280' }}>몸 기록이 없습니다.</p>
           )}
         </div>
       </section>

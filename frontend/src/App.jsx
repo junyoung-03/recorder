@@ -8,6 +8,7 @@ import FinancePage from './pages/FinancePage';
 import FinanceMonthPage from './pages/FinanceMonthPage';
 import ExercisePage from './pages/ExercisePage';
 import ExerciseMonthPage from './pages/ExerciseMonthPage';
+import BodyRecordsAllPage from './pages/BodyRecordsAllPage';
 import MealsPage from './pages/MealsPage';
 import FriendMealsPage from './pages/FriendMealsPage';
 import JournalListPage from './pages/JournalListPage';
@@ -26,6 +27,7 @@ const PAGE_COMPONENTS = {
   financeMonth: FinanceMonthPage,
   exercise: ExercisePage,
   exerciseMonth: ExerciseMonthPage,
+  bodyRecordsAll: BodyRecordsAllPage,
   meals: MealsPage,
   friendMeals: FriendMealsPage,
   journalList: JournalListPage,

@@ -5,6 +5,7 @@ function JournalListPage({ journals = [], friendsList = [], categories: initialC
   const [newCategory, setNewCategory] = useState('');
   const [categoryOpen, setCategoryOpen] = useState(true);
   const [categoryEditMode, setCategoryEditMode] = useState(false);
+  const [categoryAddMode, setCategoryAddMode] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
 
@@ -24,6 +25,7 @@ function JournalListPage({ journals = [], friendsList = [], categories: initialC
     const exists = categories.some((category) => category.name === trimmed);
     if (exists) {
       setNewCategory('');
+      setCategoryAddMode(false);
       return;
     }
     try {
@@ -39,6 +41,7 @@ function JournalListPage({ journals = [], friendsList = [], categories: initialC
       if (payload.category) {
         setCategories((prev) => [...prev, payload.category]);
         setNewCategory('');
+        setCategoryAddMode(false);
       }
     } catch (error) {
       console.error(error);
@@ -112,6 +115,9 @@ function JournalListPage({ journals = [], friendsList = [], categories: initialC
                   onClick={(event) => {
                     event.stopPropagation();
                     setCategoryEditMode((prev) => !prev);
+                    if (categoryEditMode) {
+                      setCategoryAddMode(false);
+                    }
                   }}
                   className="text-xs text-gray-400 hover:text-gray-600"
                 >
@@ -227,26 +233,63 @@ function JournalListPage({ journals = [], friendsList = [], categories: initialC
                     )}
                   </div>
                 ))}
-                {categoryEditMode && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleAddCategory}
-                      className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-sm hover:bg-gray-50 transition"
-                      aria-label="게시판 추가"
-                    >
-                      +
-                    </button>
-                    <input
-                      type="text"
-                      value={newCategory}
-                      onChange={(event) => setNewCategory(event.target.value)}
-                      onKeyDown={handleCategoryKeyDown}
-                      placeholder="게시판 이름 입력"
-                      className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    />
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryAddMode((prev) => !prev);
+                      if (categoryAddMode) {
+                        setNewCategory('');
+                      }
+                    }}
+                    className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-sm hover:bg-gray-50 transition"
+                    aria-label="카테고리 추가"
+                  >
+                    +
+                  </button>
+                  {categoryAddMode && (
+                    <>
+                      <input
+                        type="text"
+                        value={newCategory}
+                        onChange={(event) => setNewCategory(event.target.value)}
+                        onKeyDown={handleCategoryKeyDown}
+                        onBlur={() => {
+                          if (!newCategory.trim()) {
+                            setCategoryAddMode(false);
+                          }
+                        }}
+                        placeholder="카테고리 이름 입력"
+                        className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCategory}
+                        disabled={!newCategory.trim()}
+                        className="text-xs px-3 py-1.5 rounded-md border transition"
+                        style={{
+                          backgroundColor: newCategory.trim() ? '#F3F4F6' : '#FAFAFA',
+                          borderColor: '#E5E7EB',
+                          color: newCategory.trim() ? '#6B7280' : '#D1D5DB',
+                          cursor: newCategory.trim() ? 'pointer' : 'not-allowed'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (newCategory.trim()) {
+                            e.target.style.backgroundColor = '#E5E7EB';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (newCategory.trim()) {
+                            e.target.style.backgroundColor = '#F3F4F6';
+                          }
+                        }}
+                      >
+                        등록
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
