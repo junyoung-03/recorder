@@ -11,7 +11,7 @@ function FriendsPage({ friendsList = [], incomingRequests = [], outgoingRequests
           <input
             type="text"
             name="username"
-            placeholder="친구 아이디 입력"
+            placeholder="친구 ID 또는 아이디 입력"
             className="flex-1 p-2 border rounded-md"
             style={{ borderColor: '#E5E7EB' }}
           />

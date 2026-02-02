@@ -1,110 +1,185 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-function FriendJournalPage({ friendUser, journals = [], likedJournalIds = [], friendsList = [] }) {
+function FriendJournalPage({
+  friendUser,
+  journals = [],
+  likedJournalIds = [],
+  friendsList = [],
+  categories = [],
+  categoryCounts = {},
+}) {
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState(null);
+
+  const getCategoryJournals = (categoryKey) => {
+    if (categoryKey === 'all') {
+      return journals;
+    }
+    if (categoryKey === '__uncategorized') {
+      return journals.filter((journal) => !journal.category);
+    }
+    return journals.filter((journal) => journal.category === categoryKey);
+  };
+
+  const visibleJournals = activeCategory ? getCategoryJournals(activeCategory) : journals;
+
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      <div className="flex-1 space-y-6">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-semibold" style={{ color: '#1F2937' }}>
-            {friendUser?.nickname || friendUser?.username}
-          </span>
-          <span className="text-sm" style={{ color: '#6B7280' }}>님의 일기</span>
+    <div className="space-y-6">
+      <section className="bg-white rounded-lg shadow-md p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm" style={{ color: '#6B7280' }}>Friend Blog</p>
+            <h2 className="text-2xl font-bold" style={{ color: '#1F2937' }}>
+              {friendUser?.nickname || friendUser?.username}님의 일기 블로그
+            </h2>
+          </div>
         </div>
+      </section>
 
-        <section className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold mb-4" style={{ color: '#1F2937' }}>
-            📰 일기
-          </h2>
-          {journals.length > 0 ? (
-            <div className="space-y-6">
-              {journals.map((journal) => (
-                <div key={journal.id} className="border rounded-lg p-5" style={{ borderColor: '#E5E7EB' }}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">🙂</div>
-                    <div>
-                      <div className="font-semibold" style={{ color: '#1F2937' }}>
-                        {friendUser?.nickname || friendUser?.username}
-                      </div>
-                      <div className="text-xs" style={{ color: '#6B7280' }}>{journal.date}</div>
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2" style={{ color: '#1F2937' }}>
-                    {journal.title || '제목 없음'}
-                  </h3>
-                  <p className="text-sm" style={{ color: '#6B7280' }}>
-                    {journal.preview || journal.content?.slice(0, 200)}
-                    {(journal.content || '').length > 200 ? '...' : ''}
-                  </p>
-                  <div className="flex items-center gap-2 mt-3">
-                    <form method="post" action={`/journal/${journal.id}/like`}>
-                      <input type="hidden" name="next" value={`/friend/${friendUser?.id}/journal`} />
-                      <button
-                        type="submit"
-                        className={`text-xs px-2 py-1 rounded border ${
-                          likedJournalIds.includes(journal.id) ? 'calm-blue-bg text-white' : 'text-gray-600'
-                        }`}
-                      >
-                        {likedJournalIds.includes(journal.id) ? '좋아요 취소' : '좋아요'}
-                      </button>
-                    </form>
-                    <span className="text-xs" style={{ color: '#6B7280' }}>좋아요 {journal.likes?.length || 0}개</span>
-                    <span className="text-xs" style={{ color: '#6B7280' }}>댓글 {journal.comments?.length || 0}개</span>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {(journal.comments || []).map((comment) => (
-                      <div key={comment.id} className="flex items-center justify-between text-xs">
-                        <div>
-                          <span className="font-semibold">{comment.user?.nickname || comment.user?.username}</span>
-                          <span style={{ color: '#6B7280' }}> {comment.content}</span>
-                        </div>
-                        {(comment.canDelete || false) && (
-                          <form method="post" action={`/journal/comments/${comment.id}/delete`}>
-                            <input type="hidden" name="next" value={`/friend/${friendUser?.id}/journal`} />
-                            <button type="submit" className="text-gray-400 hover:text-gray-600">삭제</button>
-                          </form>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <form method="post" action={`/journal/${journal.id}/comment`} className="mt-2 flex gap-2">
-                    <input type="hidden" name="next" value={`/friend/${friendUser?.id}/journal`} />
-                    <input type="text" name="content" placeholder="댓글 입력" className="flex-1 p-2 text-sm border rounded-md" style={{ borderColor: '#E5E7EB' }} />
-                    <button type="submit" className="text-xs px-3 py-2 rounded btn-primary">등록</button>
-                  </form>
+      <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+        <aside className="w-full lg:w-72 space-y-4 lg:order-1">
+          <div className="bg-white rounded-lg shadow-md p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-lg">🙂</div>
+              <div>
+                <div className="font-semibold" style={{ color: '#1F2937' }}>
+                  {friendUser?.nickname || friendUser?.username}
+                </div>
+                <div className="text-xs" style={{ color: '#6B7280' }}>친구의 일기</div>
+              </div>
+            </div>
+            <div className="mt-4 text-xs" style={{ color: '#6B7280' }}>
+              총 글 {journals.length}개
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-red-500">
+              <span>카테고리</span>
+            </div>
+            <div className="px-5 pb-4 space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory((prev) => (prev === 'all' ? null : 'all'))}
+                  className="text-left hover:underline"
+                >
+                  전체보기
+                </button>
+                <span className="text-xs text-gray-400">({journals.length})</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory((prev) => (prev === '__uncategorized' ? null : '__uncategorized'))}
+                  className="text-left hover:underline"
+                >
+                  일반
+                </button>
+                <span className="text-xs text-gray-400">({categoryCounts.__uncategorized || 0})</span>
+              </div>
+              {categories.map((category) => (
+                <div key={category.id} className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setActiveCategory((prev) => (prev === category.name ? null : category.name))}
+                    className="text-left hover:underline"
+                  >
+                    {category.name}
+                  </button>
+                  <span className="text-xs text-gray-400">({categoryCounts[category.name] || 0})</span>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-center py-8" style={{ color: '#6B7280' }}>공유된 일기가 없습니다.</p>
-          )}
-        </section>
-      </div>
+          </div>
 
-      <aside className="w-full lg:w-64">
-        <div className="bg-white rounded-lg shadow-md p-4">
-          <h3 className="text-lg font-bold mb-3" style={{ color: '#1F2937' }}>
-            친구 목록
-          </h3>
-          {friendsList.length > 0 ? (
-            <div className="space-y-2">
-              {friendsList.map((friend) => (
-                <a
-                  key={friend.id || friend.username}
-                  href={`/friend/${friend.id}/journal`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 p-2 rounded-md bg-gray-50 hover:bg-gray-100 transition"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm">🙂</div>
-                  <span className="text-sm">{friend.nickname || friend.username}</span>
-                </a>
-              ))}
-            </div>
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setRecentOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-red-500"
+            >
+              <span>최근 글</span>
+              <span className="text-xs text-gray-400">{recentOpen ? '^' : 'v'}</span>
+            </button>
+            {recentOpen && (
+              <div className="px-5 pb-4 space-y-2 text-sm">
+                {journals.slice(0, 5).map((journal) => (
+                  <div key={journal.id} className="block truncate" style={{ color: '#374151' }}>
+                    {journal.title || '제목 없음'}
+                  </div>
+                ))}
+                {journals.length === 0 && (
+                  <div className="text-xs" style={{ color: '#6B7280' }}>최근 글이 없습니다.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-5">
+            <h3 className="text-sm font-semibold mb-3" style={{ color: '#1F2937' }}>친구</h3>
+            {friendsList.length > 0 ? (
+              <div className="space-y-2">
+                {friendsList.map((friend) => (
+                  <a
+                    key={friend.id || friend.username}
+                    href={`/friend/${friend.id}/journal`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 p-2 rounded-md bg-gray-50 hover:bg-gray-100 transition"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm">🙂</div>
+                    <span className="text-sm">{friend.nickname || friend.username}</span>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: '#6B7280' }}>친구가 없습니다.</p>
+            )}
+          </div>
+        </aside>
+
+        <div className="flex-1 space-y-4 lg:order-2">
+          {visibleJournals.length > 0 ? (
+            visibleJournals.map((journal) => (
+              <article key={journal.id} className="bg-white rounded-lg shadow-md p-5">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm" style={{ color: '#6B7280' }}>{journal.date}</p>
+                  <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
+                    {journal.visibility}
+                  </span>
+                </div>
+                <div className="text-xl font-semibold" style={{ color: '#1F2937' }}>
+                  {journal.title || '제목 없음'}
+                </div>
+                <p className="text-sm mt-2" style={{ color: '#6B7280' }}>
+                  {journal.preview || journal.content?.slice(0, 180)}
+                  {(journal.content || '').length > 180 ? '...' : ''}
+                </p>
+                <div className="flex flex-wrap items-center gap-3 mt-4 text-xs" style={{ color: '#6B7280' }}>
+                  <form method="post" action={`/journal/${journal.id}/like`}>
+                    <input type="hidden" name="next" value={`/friend/${friendUser?.id}/journal`} />
+                    <button
+                      type="submit"
+                      className={`text-xs px-2 py-1 rounded border ${
+                        likedJournalIds.includes(journal.id) ? 'calm-blue-bg text-white' : 'text-gray-600'
+                      }`}
+                    >
+                      {likedJournalIds.includes(journal.id) ? '좋아요 취소' : '좋아요'}
+                    </button>
+                  </form>
+                  <span>좋아요 {journal.likes?.length || 0}</span>
+                  <span>댓글 {journal.comments?.length || 0}</span>
+                </div>
+              </article>
+            ))
           ) : (
-            <p className="text-sm" style={{ color: '#6B7280' }}>친구가 없습니다.</p>
+            <div className="bg-white rounded-lg shadow-md p-8 text-center" style={{ color: '#6B7280' }}>
+              공유된 일기가 없습니다.
+            </div>
           )}
         </div>
-      </aside>
+      </div>
     </div>
   );
 }

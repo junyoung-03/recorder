@@ -1562,11 +1562,14 @@ def friends():
 @login_required
 def send_friend_request():
     """친구 요청"""
-    username = request.form.get('username', '').strip()
-    if not username:
+    identifier = request.form.get('username', '').strip()
+    if not identifier:
         return redirect(url_for('main.friends'))
 
-    target = User.query.filter_by(username=username).first()
+    if identifier.isdigit():
+        target = User.query.get(int(identifier))
+    else:
+        target = User.query.filter_by(username=identifier).first()
     if not target or target.id == current_user.id:
         return redirect(url_for('main.friends'))
 
@@ -1663,6 +1666,8 @@ def friend_journal(friend_id):
         Journal.user_id == friend_id,
         Journal.visibility.in_(['friends', 'public'])
     ).order_by(Journal.date.desc(), Journal.created_at.desc()).all()
+    categories = ensure_default_journal_categories(friend_id)
+    category_counts = build_journal_category_counts(journals)
     friends_list = get_friends_list(current_user.id)
     journal_ids = [journal.id for journal in journals]
     liked_journal_ids = set()
@@ -1682,6 +1687,8 @@ def friend_journal(friend_id):
     return render_react('friendJournal', {
         'friendUser': serialize_user(friend_user),
         'journals': serialized_journals,
+        'categories': [serialize_journal_category(category) for category in categories],
+        'categoryCounts': category_counts,
         'friendsList': [serialize_user(friend) for friend in friends_list],
         'likedJournalIds': list(liked_journal_ids)
     }, active_path='/journal')
