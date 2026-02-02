@@ -213,3 +213,4 @@ Recorder는 개인 데이터는 권한 함수/쿼리 조건으로 분리하고,
 - Signed URL 기반 미디어 제공
 - TLS/보안 헤더/Rate Limit 적용
 
+

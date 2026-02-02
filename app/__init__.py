@@ -40,6 +40,16 @@ def create_app():
         app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{instance_dir / "database.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'dev-secret-key'
+
+    # Log DB source without leaking secrets
+    print(
+        "[startup] db_source=%s DATABASE_URL set=%s SUPABASE_DB_URL set=%s"
+        % (
+            "postgres" if database_url else "sqlite",
+            bool(os.environ.get("DATABASE_URL")),
+            bool(os.environ.get("SUPABASE_DB_URL")),
+        )
+    )
     
     db.init_app(app)
     login_manager.init_app(app)

@@ -269,3 +269,4 @@ create trigger trg_likes_updated_at
 before update on public.likes
 for each row execute function public.set_updated_at();
 
+
