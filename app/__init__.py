@@ -1,7 +1,8 @@
-from flask import Flask
+from flask import Flask, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from pathlib import Path
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import os
 from dotenv import load_dotenv
 
@@ -32,10 +33,21 @@ def create_app():
         # Supabase Postgres URL 지원 (postgres -> postgresql)
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        if database_url.startswith('postgresql://'):
+            parsed = urlparse(database_url)
+            query = dict(parse_qsl(parsed.query))
+            if 'sslmode' not in query:
+                query['sslmode'] = 'require'
+            database_url = urlunparse(parsed._replace(query=urlencode(query)))
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+                'pool_pre_ping': True,
+                'connect_args': {'sslmode': query.get('sslmode', 'require')}
+            }
+        else:
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+                'pool_pre_ping': True
+            }
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'pool_pre_ping': True
-        }
     else:
         app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{instance_dir / "database.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -77,6 +89,13 @@ def create_app():
 @login_manager.user_loader
 def load_user(user_id):
     from app.models import User
-    return User.query.get(int(user_id))
+    try:
+        return User.query.get(int(user_id))
+    except (TypeError, ValueError):
+        try:
+            current_app.logger.warning("Invalid user_id in session: %s", user_id)
+        except Exception:
+            pass
+        return None
 
 

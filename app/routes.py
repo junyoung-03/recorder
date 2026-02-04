@@ -36,8 +36,12 @@ def get_react_assets():
     manifest_path = Path(current_app.root_path).parent / 'static' / 'dist' / '.vite' / 'manifest.json'
     if not manifest_path.exists():
         return [], []
-    with open(manifest_path, 'r', encoding='utf-8') as handle:
-        manifest = json.load(handle)
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as handle:
+            manifest = json.load(handle)
+    except Exception:
+        current_app.logger.exception("Failed to load Vite manifest: %s", manifest_path)
+        return [], []
     entry = manifest.get('src/main.jsx') or manifest.get('index.html')
     if not entry:
         return [], []
