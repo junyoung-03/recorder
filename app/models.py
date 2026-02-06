@@ -248,9 +248,7 @@ class Comment(db.Model):
 
 class Like(db.Model):
     """Like"""
-    __tablename__ = 'likes'
-
-    id = db.Column(db.Integer, primary_key=True)
+    __tablename__ = 'likes'    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     meal_id = db.Column(db.Integer, db.ForeignKey('meal_records.id'), nullable=True, index=True)
     journal_id = db.Column(db.Integer, db.ForeignKey('journals.id'), nullable=True, index=True)
