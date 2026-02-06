@@ -1,17 +1,33 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { supabase } from '../lib/supabaseClient';
 
-function JournalDetailPage({ journal, liked = false, journals = [], friendsList = [], categories: initialCategories = [], categoryCounts = {} }) {
-  if (!journal) {
-    return null;
-  }
-
+function JournalDetailPage({ currentUser, journalId }) {
+  const [journal, setJournal] = useState(null);
+  const [journals, setJournals] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [comments, setComments] = useState([]);
   const [categoryOpen, setCategoryOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
-  const [categories, setCategories] = useState(initialCategories);
+  const [categories, setCategories] = useState([]);
   const [newCategory, setNewCategory] = useState('');
   const [categoryEditMode, setCategoryEditMode] = useState(false);
   const [categoryAddMode, setCategoryAddMode] = useState(false);
+
+  const categoryCounts = useMemo(() => {
+    const counts = { __uncategorized: 0 };
+    journals.forEach((entry) => {
+      if (entry.category) {
+        counts[entry.category] = (counts[entry.category] || 0) + 1;
+      } else {
+        counts.__uncategorized += 1;
+      }
+    });
+    return counts;
+  }, [journals]);
 
   const handleAddCategory = async () => {
     const trimmed = newCategory.trim();
@@ -23,17 +39,16 @@ function JournalDetailPage({ journal, liked = false, journals = [], friendsList 
       return;
     }
     try {
-      const response = await fetch('/journal/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
-      });
-      if (!response.ok) {
+      const { data, error } = await supabase
+        .from('journal_categories')
+        .insert([{ user_id: currentUser.id, name: trimmed }])
+        .select()
+        .single();
+      if (error) {
         return;
       }
-      const payload = await response.json();
-      if (payload.category) {
-        setCategories((prev) => [...prev, payload.category]);
+      if (data) {
+        setCategories((prev) => [...prev, data]);
         setNewCategory('');
         setCategoryAddMode(false);
       }
@@ -51,10 +66,8 @@ function JournalDetailPage({ journal, liked = false, journals = [], friendsList 
 
   const handleRemoveCategory = async (categoryId) => {
     try {
-      const response = await fetch(`/journal/categories/${categoryId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
+      const { error } = await supabase.from('journal_categories').delete().eq('id', categoryId);
+      if (error) {
         return;
       }
       setCategories((prev) => prev.filter((category) => category.id !== categoryId));
@@ -62,6 +75,137 @@ function JournalDetailPage({ journal, liked = false, journals = [], friendsList 
       console.error(error);
     }
   };
+
+  useEffect(() => {
+    if (!currentUser?.id || !journalId) return;
+    const loadJournalData = async () => {
+      const { data: journalData } = await supabase
+        .from('journals')
+        .select('*')
+        .eq('id', journalId)
+        .maybeSingle();
+      setJournal(journalData || null);
+
+      const { data: journalList } = await supabase
+        .from('journals')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      setJournals(journalList || []);
+
+      const { data: categoryData } = await supabase
+        .from('journal_categories')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: true });
+      setCategories(categoryData || []);
+
+      const { data: friendshipData } = await supabase
+        .from('friendships')
+        .select('*')
+        .eq('status', 'accepted')
+        .or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`);
+      const friendIds = (friendshipData || []).map((row) =>
+        row.user_id === currentUser.id ? row.friend_id : row.user_id,
+      );
+      if (friendIds.length) {
+        const { data: friendsData } = await supabase
+          .from('users')
+          .select('id, username, nickname')
+          .in('id', friendIds);
+        setFriendsList(friendsData || []);
+      } else {
+        setFriendsList([]);
+      }
+
+      const { data: likeData } = await supabase
+        .from('likes')
+        .select('id, user_id')
+        .eq('journal_id', journalId);
+      setLikesCount(likeData?.length || 0);
+      setLiked((likeData || []).some((item) => item.user_id === currentUser.id));
+
+      const { data: commentData } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('journal_id', journalId)
+        .order('created_at', { ascending: true });
+      const userIds = Array.from(new Set((commentData || []).map((comment) => comment.user_id)));
+      let userMap = new Map();
+      if (userIds.length) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, username, nickname')
+          .in('id', userIds);
+        userMap = new Map((usersData || []).map((user) => [user.id, user]));
+      }
+      const mappedComments = (commentData || []).map((comment) => ({
+        ...comment,
+        user: userMap.get(comment.user_id),
+        canDelete: comment.user_id === currentUser.id || journalData?.user_id === currentUser.id,
+      }));
+      setComments(mappedComments);
+    };
+    loadJournalData();
+  }, [currentUser?.id, journalId]);
+
+  useEffect(() => {
+    if (!journalId) return;
+    const channel = supabase
+      .channel(`journal-realtime-${journalId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comments', filter: `journal_id=eq.${journalId}` },
+        () => {
+          if (currentUser?.id) {
+            supabase
+              .from('comments')
+              .select('*')
+              .eq('journal_id', journalId)
+              .order('created_at', { ascending: true })
+              .then(async ({ data }) => {
+                const userIds = Array.from(new Set((data || []).map((comment) => comment.user_id)));
+                let userMap = new Map();
+                if (userIds.length) {
+                  const { data: usersData } = await supabase
+                    .from('users')
+                    .select('id, username, nickname')
+                    .in('id', userIds);
+                  userMap = new Map((usersData || []).map((user) => [user.id, user]));
+                }
+                const mapped = (data || []).map((comment) => ({
+                  ...comment,
+                  user: userMap.get(comment.user_id),
+                  canDelete: comment.user_id === currentUser.id || journal?.user_id === currentUser.id,
+                }));
+                setComments(mapped);
+              });
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes', filter: `journal_id=eq.${journalId}` },
+        () => {
+          supabase
+            .from('likes')
+            .select('id, user_id')
+            .eq('journal_id', journalId)
+            .then(({ data }) => {
+              setLikesCount(data?.length || 0);
+              if (currentUser?.id) {
+                setLiked((data || []).some((item) => item.user_id === currentUser.id));
+              }
+            });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id, journalId, journal?.user_id]);
 
   const getCategoryJournals = (categoryKey) => {
     if (categoryKey === 'all') {
@@ -72,6 +216,58 @@ function JournalDetailPage({ journal, liked = false, journals = [], friendsList 
     }
     return journals.filter((entry) => entry.category === categoryKey);
   };
+
+  const handleToggleLike = async () => {
+    if (!currentUser?.id || !journal) return;
+    if (liked) {
+      await supabase
+        .from('likes')
+        .delete()
+        .eq('journal_id', journal.id)
+        .eq('user_id', currentUser.id);
+      setLiked(false);
+      setLikesCount((prev) => Math.max(0, prev - 1));
+    } else {
+      await supabase.from('likes').insert([{ journal_id: journal.id, user_id: currentUser.id }]);
+      setLiked(true);
+      setLikesCount((prev) => prev + 1);
+    }
+  };
+
+  const handleAddComment = async (event) => {
+    event.preventDefault();
+    if (!currentUser?.id || !journal) return;
+    const formData = new FormData(event.target);
+    const content = formData.get('content')?.toString().trim();
+    if (!content) return;
+    const { data, error } = await supabase
+      .from('comments')
+      .insert([{ journal_id: journal.id, user_id: currentUser.id, content }])
+      .select()
+      .single();
+    if (error || !data) return;
+    setComments((prev) => [
+      ...prev,
+      {
+        ...data,
+        user: { username: currentUser.username, nickname: currentUser.nickname },
+        canDelete: true,
+      },
+    ]);
+    event.target.reset();
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    await supabase.from('comments').delete().eq('id', commentId);
+    setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+  };
+
+  if (!journal) {
+    return <div className="text-sm text-gray-500">일기를 불러오는 중...</div>;
+  }
+
+  const reduceMotion = useReducedMotion();
+  const fadeIn = reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 };
 
   return (
     <section className="max-w-6xl mx-auto">
@@ -313,7 +509,7 @@ function JournalDetailPage({ journal, liked = false, journals = [], friendsList 
           </div>
         </aside>
 
-        <div className="flex-1 bg-white rounded-lg shadow-md p-8">
+        <div className="flex-1 bg-white rounded-lg shadow-md p-8 motion-card">
           <div className="text-sm text-gray-400">게시판</div>
           <h2 className="mt-2 text-2xl font-semibold" style={{ color: '#1F2937' }}>{journal.title || '제목 없음'}</h2>
 
@@ -329,80 +525,87 @@ function JournalDetailPage({ journal, liked = false, journals = [], friendsList 
               </div>
             </div>
             <div className="flex items-center gap-3 text-xs">
-              <span>좋아요 {journal.likes?.length || 0}</span>
-              <span>댓글 {journal.comments?.length || 0}</span>
+              <span>좋아요 {likesCount}</span>
+              <span>댓글 {comments.length}</span>
             </div>
           </div>
 
           <div className="mt-6 border-t" style={{ borderColor: '#E5E7EB' }} />
 
-          <div className="mt-6 prose max-w-none whitespace-pre-line leading-relaxed" style={{ color: '#111827' }}>
+          <motion.div
+            initial={fadeIn}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="mt-6 prose max-w-none whitespace-pre-line leading-relaxed"
+            style={{ color: '#111827' }}
+          >
             {journal.content}
-          </div>
+          </motion.div>
 
           <div className="mt-8 flex items-center gap-2">
-            <form method="post" action={`/journal/${journal.id}/like`}>
-              <input type="hidden" name="next" value={`/journal/${journal.id}`} />
-              <button
-                type="submit"
-                className={`text-xs px-3 py-1 rounded border transition ${
-                  liked
-                    ? 'border-blue-200 text-blue-500 hover:bg-blue-50'
-                    : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                {liked ? '좋아요 취소' : '좋아요'}
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={handleToggleLike}
+              className={`text-xs px-3 py-1 rounded border transition motion-button-secondary ${
+                liked
+                  ? 'border-blue-200 text-blue-500 hover:bg-blue-50'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {liked ? '좋아요 취소' : '좋아요'}
+            </button>
           </div>
 
           <div className="mt-6 border-t" style={{ borderColor: '#E5E7EB' }} />
 
-          <div className="mt-4 space-y-2">
-            {(journal.comments || []).map((comment) => (
-              <div key={comment.id} className="flex items-center justify-between text-sm">
+          <motion.div
+            initial={fadeIn}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut', delay: 0.05 }}
+            className="mt-4 space-y-2"
+          >
+            {comments.map((comment) => (
+              <div key={comment.id} className="flex items-center justify-between text-sm transition-all duration-150 ease-out hover:-translate-y-0.5">
                 <div>
                   <span className="font-semibold">{comment.user?.nickname || comment.user?.username}</span>
                   <span style={{ color: '#6B7280' }}> {comment.content}</span>
                 </div>
                 {(comment.canDelete || false) && (
-                  <form method="post" action={`/journal/comments/${comment.id}/delete`}>
-                    <input type="hidden" name="next" value={`/journal/${journal.id}`} />
-                    <button type="submit" className="text-gray-400 hover:text-gray-600">삭제</button>
-                  </form>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteComment(comment.id)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    삭제
+                  </button>
                 )}
               </div>
             ))}
-          </div>
-          <form method="post" action={`/journal/${journal.id}/comment`} className="mt-3 flex gap-2">
-            <input type="hidden" name="next" value={`/journal/${journal.id}`} />
+          </motion.div>
+          <form className="mt-3 flex gap-2" onSubmit={handleAddComment}>
             <input type="text" name="content" placeholder="댓글 입력" className="flex-1 p-2 text-sm border rounded-md" style={{ borderColor: '#E5E7EB' }} />
-            <button type="submit" className="text-xs px-3 py-2 rounded btn-primary">등록</button>
+            <button type="submit" className="text-xs px-3 py-2 rounded btn-primary motion-button-primary">등록</button>
           </form>
 
           <div className="flex gap-2 mt-6">
-            <a
-              href={`/journal/${journal.id}/edit`}
+            <button
+              type="button"
+              onClick={() => alert('수정 기능은 준비 중입니다.')}
               className="px-3 py-1 text-xs rounded-md border border-blue-200 text-blue-500 hover:bg-blue-50 transition"
             >
               수정
-            </a>
-            <form
-              method="post"
-              action={`/journal/${journal.id}/delete`}
-              onSubmit={(event) => {
-                if (!confirm('정말 삭제하시겠습니까?')) {
-                  event.preventDefault();
-                }
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirm('정말 삭제하시겠습니까?')) return;
+                await supabase.from('journals').delete().eq('id', journal.id);
+                window.location.href = '/journal';
               }}
+              className="px-3 py-1 text-xs rounded-md border border-red-200 text-red-400 hover:bg-red-50 transition"
             >
-              <button
-                type="submit"
-                className="px-3 py-1 text-xs rounded-md border border-red-200 text-red-400 hover:bg-red-50 transition"
-              >
-                삭제
-              </button>
-            </form>
+              삭제
+            </button>
             <a href="/journal" className="px-3 py-1 text-xs rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 transition">목록</a>
           </div>
         </div>

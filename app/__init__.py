@@ -1,5 +1,6 @@
 from flask import Flask, current_app
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from flask_login import LoginManager
 from pathlib import Path
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
@@ -34,7 +35,13 @@ def create_app():
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         if database_url.startswith('postgresql://'):
-            parsed = urlparse(database_url)
+            try:
+                parsed = urlparse(database_url)
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid DATABASE_URL. Ensure the password is URL-encoded "
+                    "and the URL matches postgresql://user:pass@host:port/dbname"
+                ) from exc
             query = dict(parse_qsl(parsed.query))
             if 'sslmode' not in query:
                 query['sslmode'] = 'require'
@@ -75,6 +82,14 @@ def create_app():
         try:
             # 기존 테이블 확인 및 누락된 테이블 생성
             db.create_all()
+            inspector = inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('exercise_records')]
+            if 'total_time' not in columns:
+                db.session.execute(text('ALTER TABLE exercise_records ADD COLUMN total_time INTEGER'))
+                db.session.commit()
+            if 'weight_kg' not in columns:
+                db.session.execute(text('ALTER TABLE exercise_records ADD COLUMN weight_kg FLOAT'))
+                db.session.commit()
             # 모든 모델 import 확인
             from app.models import FinanceRecord, Schedule, User, MealRecord, ExercisePlan, ExerciseRecord, Journal, Friendship, Comment, Like, BodyRecord, Todo
             print("데이터베이스 테이블 확인 완료")
@@ -97,5 +112,3 @@ def load_user(user_id):
         except Exception:
             pass
         return None
-
-

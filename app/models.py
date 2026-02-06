@@ -4,7 +4,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 class User(UserMixin, db.Model):
-    """사용자"""
+    """User"""
     __tablename__ = 'users'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -28,7 +28,7 @@ class User(UserMixin, db.Model):
 
 
 class Friendship(db.Model):
-    """친구 관계"""
+    """Friendship"""
     __tablename__ = 'friendships'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -45,7 +45,7 @@ class Friendship(db.Model):
         return f'<Friendship {self.user_id} -> {self.friend_id} ({self.status})>'
 
 class FinanceRecord(db.Model):
-    """가계부 기록"""
+    """Finance record"""
     __tablename__ = 'finance_records'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -53,7 +53,7 @@ class FinanceRecord(db.Model):
     date = db.Column(db.Date, nullable=False, index=True)
     amount = db.Column(db.Float, nullable=False)
     transaction_type = db.Column(db.String(10), nullable=False)  # 'income' or 'expense'
-    category = db.Column(db.String(100))  # 항목명
+    category = db.Column(db.String(100))
     memo = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -71,19 +71,19 @@ class FinanceRecord(db.Model):
         }
 
 class Schedule(db.Model):
-    """일정"""
+    """Schedule"""
     __tablename__ = 'schedules'
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     date = db.Column(db.Date, nullable=False, index=True)
-    time = db.Column(db.Time)  # 시간 (선택)
-    title = db.Column(db.String(200), nullable=False)  # 제목
-    memo = db.Column(db.Text)  # 메모/장소
-    category = db.Column(db.String(50))  # 카테고리 (업무, 개인, 건강, 공부)
-    color = db.Column(db.String(20))  # 색상 태그
-    repeat_type = db.Column(db.String(20))  # 반복 여부 (none, weekly, monthly)
-    completed = db.Column(db.Boolean, default=False)  # 완료 여부
+    time = db.Column(db.Time)  # ?간 (?택)
+    title = db.Column(db.String(200), nullable=False)  # ?목
+    memo = db.Column(db.Text)  # 메모/?소
+    category = db.Column(db.String(50))  # 카테고리 (?무, 개인, 건강, 공?)
+    color = db.Column(db.String(20))  # ?상 ?그
+    repeat_type = db.Column(db.String(20))  # 반복 ?? (none, weekly, monthly)
+    completed = db.Column(db.Boolean, default=False)  # ?료 ??
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def __repr__(self):
@@ -103,30 +103,32 @@ class Schedule(db.Model):
         }
 
 class ExercisePlan(db.Model):
-    """운동 계획 (내일 할 운동 부위)"""
+    """Exercise plan"""
     __tablename__ = 'exercise_plans'
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    date = db.Column(db.Date, nullable=False, index=True)  # 운동할 날짜
-    body_part = db.Column(db.String(50), nullable=False)  # 부위 (등, 가슴, 어깨 등)
+    date = db.Column(db.Date, nullable=False, index=True)  # ?동???짜
+    body_part = db.Column(db.String(50), nullable=False)  # 부??(?? 가?? ?깨 ??
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def __repr__(self):
         return f'<ExercisePlan {self.date} {self.body_part}>'
 
 class ExerciseRecord(db.Model):
-    """운동 기록 (오늘 한 운동)"""
+    """Exercise record"""
     __tablename__ = 'exercise_records'
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     date = db.Column(db.Date, nullable=False, index=True)
-    body_part = db.Column(db.String(50), nullable=False)  # 부위
-    exercise_name = db.Column(db.String(100), nullable=False)  # 종목명
-    sets = db.Column(db.Integer)  # 세트 수
-    reps = db.Column(db.String(50))  # 횟수 (예: "12, 10, 8")
-    weight = db.Column(db.String(50))  # 무게 (예: "50kg, 55kg")
+    body_part = db.Column(db.String(50), nullable=False)
+    exercise_name = db.Column(db.String(100), nullable=False)
+    sets = db.Column(db.Integer)
+    reps = db.Column(db.String(50))
+    weight = db.Column(db.String(50))
+    total_time = db.Column(db.Integer)
+    weight_kg = db.Column(db.Float)
     memo = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -134,7 +136,7 @@ class ExerciseRecord(db.Model):
         return f'<ExerciseRecord {self.date} {self.body_part} {self.exercise_name}>'
 
 class BodyRecord(db.Model):
-    """몸 기록"""
+    """Body record"""
     __tablename__ = 'body_records'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -148,7 +150,7 @@ class BodyRecord(db.Model):
         return f'<BodyRecord {self.date} {self.user_id}>'
 
 class Todo(db.Model):
-    """해야 할일"""
+    """Todo"""
     __tablename__ = 'todos'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -162,16 +164,16 @@ class Todo(db.Model):
         return f'<Todo {self.date} {self.title}>'
 
 class MealRecord(db.Model):
-    """식단 기록"""
+    """Meal record"""
     __tablename__ = 'meal_records'
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     date = db.Column(db.Date, nullable=False, index=True)
-    meal_type = db.Column(db.String(20))  # 아침, 점심, 저녁, 간식
-    food_name = db.Column(db.String(200))  # 음식명
-    calories = db.Column(db.Integer)  # 칼로리
-    image_path = db.Column(db.String(500))  # 사진 경로
+    meal_type = db.Column(db.String(20))  # breakfast/lunch/dinner/snack
+    food_name = db.Column(db.String(200))
+    calories = db.Column(db.Integer)
+    image_path = db.Column(db.String(500))
     memo = db.Column(db.Text)
     visibility = db.Column(db.String(20), default='private')  # private, friends, public
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -184,7 +186,7 @@ class MealRecord(db.Model):
 
 
 class Journal(db.Model):
-    """일기 기록"""
+    """Journal"""
     __tablename__ = 'journals'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -217,7 +219,7 @@ class Journal(db.Model):
 
 
 class JournalCategory(db.Model):
-    """일기 카테고리"""
+    """Journal category"""
     __tablename__ = 'journal_categories'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -233,7 +235,7 @@ class JournalCategory(db.Model):
         return f'<JournalCategory {self.user_id} {self.name}>'
 
 class Comment(db.Model):
-    """댓글"""
+    """Comment"""
     __tablename__ = 'comments'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -245,7 +247,7 @@ class Comment(db.Model):
 
 
 class Like(db.Model):
-    """좋아요"""
+    """Like"""
     __tablename__ = 'likes'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -253,9 +255,7 @@ class Like(db.Model):
     meal_id = db.Column(db.Integer, db.ForeignKey('meal_records.id'), nullable=True, index=True)
     journal_id = db.Column(db.Integer, db.ForeignKey('journals.id'), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
     __table_args__ = (
         db.UniqueConstraint('user_id', 'meal_id', name='unique_like_meal'),
         db.UniqueConstraint('user_id', 'journal_id', name='unique_like_journal'),
     )
-

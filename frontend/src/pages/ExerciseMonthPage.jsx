@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 const formatKoreanDate = (value) => {
   if (!value) return '';
@@ -6,9 +7,42 @@ const formatKoreanDate = (value) => {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 };
 
-function ExerciseMonthPage({ yearOptions = [], currentYear, currentMonth, cards = [] }) {
+function ExerciseMonthPage({ currentUser }) {
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [newRecordDate, setNewRecordDate] = useState('');
+  const today = useMemo(() => new Date(), []);
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [currentYear, setCurrentYear] = useState(() => Number(urlParams.get('year')) || today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => Number(urlParams.get('month')) || today.getMonth() + 1);
+  const [cards, setCards] = useState([]);
+  const yearOptions = useMemo(() => Array.from({ length: 7 }, (_, idx) => today.getFullYear() - 5 + idx), [today]);
+
+  const loadMonthRecords = async (userId, year, month) => {
+    if (!userId) return;
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+    const { data } = await supabase
+      .from('exercise_records')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', startDate.toISOString().slice(0, 10))
+      .lte('date', endDate.toISOString().slice(0, 10))
+      .order('date', { ascending: true })
+      .order('created_at', { ascending: false });
+    const grouped = new Map();
+    (data || []).forEach((record) => {
+      const key = record.date;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(record);
+    });
+    const totalDays = endDate.getDate();
+    const nextCards = [];
+    for (let day = 1; day <= totalDays; day += 1) {
+      const dateKey = new Date(year, month - 1, day).toISOString().slice(0, 10);
+      nextCards.push({ date: dateKey, records: grouped.get(dateKey) || [] });
+    }
+    setCards(nextCards);
+  };
 
   const openAddExerciseForDate = (dateValue) => {
     if (!dateValue) return;
@@ -18,15 +52,34 @@ function ExerciseMonthPage({ yearOptions = [], currentYear, currentMonth, cards 
 
   const handleAddExercise = async (event) => {
     event.preventDefault();
+    if (!currentUser?.id) return;
     const formData = new FormData(event.target);
-    const response = await fetch('/exercise/record', { method: 'POST', body: formData });
-    const result = await response.json();
-    if (result.success) {
-      window.location.reload();
-    } else {
-      alert(result.message || '오류가 발생했습니다.');
+    const body_part = formData.get('body_part');
+    const memo = formData.get('memo') || '';
+    const total_time_raw = formData.get('total_time');
+    const weight_raw = formData.get('weight_kg');
+    const payload = {
+      user_id: currentUser.id,
+      date: formData.get('date') || newRecordDate,
+      body_part,
+      exercise_name: memo ? memo : body_part,
+      total_time: total_time_raw ? Number(total_time_raw) : null,
+      weight_kg: weight_raw ? Number(weight_raw) : null,
+      memo,
+    };
+    const { error } = await supabase.from('exercise_records').insert([payload]);
+    if (error) {
+      alert('오류가 발생했습니다.');
+      return;
     }
+    setShowExerciseModal(false);
+    loadMonthRecords(currentUser.id, currentYear, currentMonth);
   };
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    loadMonthRecords(currentUser.id, currentYear, currentMonth);
+  }, [currentUser?.id, currentYear, currentMonth]);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -38,13 +91,33 @@ function ExerciseMonthPage({ yearOptions = [], currentYear, currentMonth, cards 
           </button>
         </div>
 
-        <form method="get" className="flex items-center gap-2 mb-6">
-          <select name="year" className="px-3 py-2 border rounded-md" style={{ borderColor: '#E5E7EB' }} defaultValue={currentYear}>
+        <form
+          className="flex items-center gap-2 mb-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (currentUser?.id) {
+              loadMonthRecords(currentUser.id, currentYear, currentMonth);
+            }
+          }}
+        >
+          <select
+            name="year"
+            className="px-3 py-2 border rounded-md"
+            style={{ borderColor: '#E5E7EB' }}
+            value={currentYear}
+            onChange={(event) => setCurrentYear(Number(event.target.value))}
+          >
             {yearOptions.map((year) => (
               <option key={year} value={year}>{year}년</option>
             ))}
           </select>
-          <select name="month" className="px-3 py-2 border rounded-md" style={{ borderColor: '#E5E7EB' }} defaultValue={currentMonth}>
+          <select
+            name="month"
+            className="px-3 py-2 border rounded-md"
+            style={{ borderColor: '#E5E7EB' }}
+            value={currentMonth}
+            onChange={(event) => setCurrentMonth(Number(event.target.value))}
+          >
             {Array.from({ length: 12 }, (_, idx) => idx + 1).map((month) => (
               <option key={month} value={month}>{month}월</option>
             ))}
@@ -68,6 +141,9 @@ function ExerciseMonthPage({ yearOptions = [], currentYear, currentMonth, cards 
                   {card.records.map((record) => (
                     <div key={record.id} className="text-xs">
                       <div className="font-semibold" style={{ color: '#1F2937' }}>{record.body_part}</div>
+                      {record.total_time ? (
+                        <div className="mt-1" style={{ color: '#6B7280' }}>총 {record.total_time}분</div>
+                      ) : null}
                       <div className="mt-1" style={{ color: '#6B7280', whiteSpace: 'pre-line' }}>{record.memo || '메모 없음'}</div>
                     </div>
                   ))}
@@ -95,6 +171,29 @@ function ExerciseMonthPage({ yearOptions = [], currentYear, currentMonth, cards 
                     <option key={part} value={part}>{part}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>몸무게 (kg)</label>
+                <input
+                  type="number"
+                  name="weight_kg"
+                  min="0"
+                  step="0.1"
+                  className="w-full p-2 border rounded-md"
+                  style={{ borderColor: '#E5E7EB' }}
+                  placeholder="예: 68.2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>총 시간 (분)</label>
+                <input
+                  type="number"
+                  name="total_time"
+                  min="0"
+                  className="w-full p-2 border rounded-md"
+                  style={{ borderColor: '#E5E7EB' }}
+                  placeholder="예: 60"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>메모</label>

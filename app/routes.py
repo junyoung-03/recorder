@@ -74,6 +74,15 @@ def serialize_calendar(calendar):
     return serialized
 
 
+def get_holiday_dates(year):
+    try:
+        import holidays
+        kr_holidays = holidays.KR(years=[year])
+        return set(kr_holidays.keys())
+    except Exception:
+        return set()
+
+
 def serialize_user(user):
     return {'id': user.id, 'username': user.username, 'nickname': user.nickname}
 
@@ -106,6 +115,8 @@ def serialize_exercise_record(record):
         'id': record.id,
         'date': record.date.isoformat(),
         'body_part': record.body_part,
+        'total_time': record.total_time,
+        'weight_kg': record.weight_kg,
         'memo': record.memo
     }
 
@@ -249,42 +260,56 @@ def build_todo_cards(user_id, base_date, limit=4):
 
 
 def build_exercise_cards(user_id, base_date):
-    """운동 기록 카드 데이터 생성 (그저께/어제/오늘/내일)"""
+    """운동 기록 카드 데이터 생성 (오늘 + 최근 3일)"""
     if not base_date:
         base_date = date.today()
 
-    target_dates = [
-        base_date - timedelta(days=2),
-        base_date - timedelta(days=1),
-        base_date,
-        base_date + timedelta(days=1)
-    ]
+    recent_records = ExerciseRecord.query.filter(
+        ExerciseRecord.user_id == user_id
+    ).order_by(ExerciseRecord.date.desc(), ExerciseRecord.created_at.desc()).all()
 
-    start_date = min(target_dates)
-    end_date = max(target_dates)
+    distinct_dates = []
+    seen = set()
+    for record in recent_records:
+        if record.date in seen:
+            continue
+        distinct_dates.append(record.date)
+        seen.add(record.date)
+        if len(distinct_dates) >= 4:
+            break
+
+    target_dates = [base_date]
+    for record_date in distinct_dates:
+        if record_date == base_date:
+            continue
+        target_dates.append(record_date)
+        if len(target_dates) >= 4:
+            break
+
+    cursor = base_date
+    while len(target_dates) < 4:
+        cursor = cursor - timedelta(days=1)
+        if cursor not in target_dates:
+            target_dates.append(cursor)
 
     records = ExerciseRecord.query.filter(
         ExerciseRecord.user_id == user_id,
-        ExerciseRecord.date >= start_date,
-        ExerciseRecord.date <= end_date
-    ).order_by(ExerciseRecord.date.asc(), ExerciseRecord.created_at.desc()).all()
+        ExerciseRecord.date.in_(target_dates)
+    ).order_by(ExerciseRecord.date.desc(), ExerciseRecord.created_at.desc()).all()
 
     grouped = {}
     for record in records:
         grouped.setdefault(record.date, []).append(record)
 
-    labels = ['그저께', '어제', '오늘', '내일']
-    cards = []
-    for idx, target_date in enumerate(target_dates):
-        cards.append({
-            'label': labels[idx],
+    return [
+        {
             'date': target_date,
             'records': grouped.get(target_date, [])
-        })
+        }
+        for target_date in target_dates
+    ]
 
-    return cards
-
-def get_calendar_data(year, month, finance_data):
+def get_calendar_data(year, month, finance_data, holiday_dates=None):
     """캘린더 데이터 생성"""
     first_day = date(year, month, 1)
     last_day_num = monthrange(year, month)[1]
@@ -303,12 +328,14 @@ def get_calendar_data(year, month, finance_data):
     for day in range(1, last_day_num + 1):
         current_date = date(year, month, day)
         day_finance = finance_data.get(day, {'income': 0, 'expense': 0})
+        is_holiday = holiday_dates and current_date in holiday_dates
         week.append({
             'day': day,
             'date': current_date,
             'income': day_finance['income'],
             'expense': day_finance['expense'],
-            'net': day_finance['income'] - day_finance['expense']
+            'net': day_finance['income'] - day_finance['expense'],
+            'isHoliday': bool(is_holiday)
         })
         
         if len(week) == 7:
@@ -328,7 +355,7 @@ def get_calendar_data(year, month, finance_data):
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('main.home'))
+        return redirect(url_for('main.dashboard'))
 
     error = None
     if request.method == 'POST':
@@ -339,7 +366,7 @@ def login():
         if user and user.check_password(password):
             login_user(user)
             next_url = request.args.get('next')
-            return redirect(next_url or url_for('main.home'))
+            return redirect(next_url or url_for('main.dashboard'))
 
         error = '아이디 또는 비밀번호가 올바르지 않습니다.'
 
@@ -349,7 +376,7 @@ def login():
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
-        return redirect(url_for('main.home'))
+        return redirect(url_for('main.dashboard'))
 
     error = None
     if request.method == 'POST':
@@ -370,7 +397,7 @@ def register():
             db.session.add(new_user)
             db.session.commit()
             login_user(new_user)
-            return redirect(url_for('main.home'))
+            return redirect(url_for('main.dashboard'))
 
     return render_react('register', {'error': error}, active_path='/register')
 
@@ -383,11 +410,41 @@ def logout():
 
 # ===== Home =====
 @bp.route('/')
+def landing():
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+    return render_react('landing', active_path='/')
+
+
+@bp.route('/dashboard')
 @login_required
-def home():
+def dashboard():
     today = date.today()
     current_year = today.year
     current_month = today.month
+    year_param = request.args.get('year')
+    month_param = request.args.get('month')
+    selected_date = request.args.get('date')
+
+    try:
+        if year_param:
+            current_year = int(year_param)
+        if month_param:
+            current_month = int(month_param)
+    except ValueError:
+        current_year = today.year
+        current_month = today.month
+
+    if selected_date:
+        try:
+            selected_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
+        except:
+            selected_date = today
+    else:
+        if today.year == current_year and today.month == current_month:
+            selected_date = today
+        else:
+            selected_date = date(current_year, current_month, 1)
     
     # 요일 이름 (한글)
     weekdays = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
@@ -400,7 +457,8 @@ def home():
     total_net = 0
     
     # 캘린더 데이터 생성
-    calendar = get_calendar_data(current_year, current_month, finance_data)
+    holiday_dates = get_holiday_dates(current_year)
+    calendar = get_calendar_data(current_year, current_month, finance_data, holiday_dates)
 
     # 일정 표시용 (홈 캘린더)
     start_date = date(current_year, current_month, 1)
@@ -420,10 +478,11 @@ def home():
             schedule_titles[day] = []
         schedule_titles[day].append(schedule.title)
 
-    # 오늘 일정
+    # 선택한 날짜 일정
+    focus_date = selected_date
     today_schedules = Schedule.query.filter(
         Schedule.user_id == current_user.id,
-        Schedule.date == today
+        Schedule.date == focus_date
     ).all()
     from datetime import time as dt_time
     today_schedules.sort(key=lambda s: (s.time is None, s.time or dt_time(23, 59, 59), s.created_at or datetime.min))
@@ -433,13 +492,14 @@ def home():
     
     today_todos = Todo.query.filter(
         Todo.user_id == current_user.id,
-        Todo.date == today
+        Todo.date == focus_date
     ).order_by(Todo.created_at.desc()).all()
 
-    return render_react('home', {
+    return render_react('dashboard', {
         'currentYear': current_year,
         'currentMonth': current_month,
         'today': today.isoformat(),
+        'selectedDate': selected_date.isoformat(),
         'todayFormatted': today_formatted,
         'weekdayName': weekday_name,
         'calendar': serialize_calendar(calendar),
@@ -448,9 +508,16 @@ def home():
         'totalNet': total_net,
         'scheduleCount': schedule_count,
         'scheduleTitles': schedule_titles,
+        'monthSchedules': [serialize_schedule(schedule) for schedule in schedules],
         'todaySchedules': [serialize_schedule(schedule) for schedule in today_schedules],
         'todayTodos': [serialize_todo(todo) for todo in today_todos]
     }, active_path='/')
+
+
+@bp.route('/account')
+@login_required
+def account():
+    return render_react('account', {}, active_path='/account')
 
 def get_finance_data_from_db(year, month):
     """데이터베이스에서 가계부 데이터 가져오기"""
@@ -480,7 +547,8 @@ def get_finance_data_from_db(year, month):
 def get_calendar_data_from_db(year, month):
     """데이터베이스에서 캘린더 데이터 생성"""
     finance_data = get_finance_data_from_db(year, month)
-    return get_calendar_data(year, month, finance_data)
+    holiday_dates = get_holiday_dates(year)
+    return get_calendar_data(year, month, finance_data, holiday_dates)
 
 # ===== Finance =====
 @bp.route('/finance')
@@ -829,6 +897,8 @@ def get_schedule_calendar_data(year, month):
             schedule_titles[day] = []
         schedule_titles[day].append(schedule.title)
     
+    holiday_dates = get_holiday_dates(year)
+
     # 캘린더 구조 생성
     first_day = date(year, month, 1)
     first_weekday = first_day.weekday()
@@ -842,12 +912,14 @@ def get_schedule_calendar_data(year, month):
     # 날짜 채우기
     for day in range(1, last_day + 1):
         current_date = date(year, month, day)
+        is_holiday = holiday_dates and current_date in holiday_dates
         week.append({
             'day': day,
             'date': current_date,
             'has_schedule': day in schedule_count,
             'schedule_count': schedule_count.get(day, 0),
-            'titles': schedule_titles.get(day, [])
+            'titles': schedule_titles.get(day, []),
+            'isHoliday': bool(is_holiday)
         })
         
         if len(week) == 7:
@@ -870,6 +942,17 @@ def schedule():
     today = date.today()
     current_year = today.year
     current_month = today.month
+    year_param = request.args.get('year')
+    month_param = request.args.get('month')
+
+    try:
+        if year_param:
+            current_year = int(year_param)
+        if month_param:
+            current_month = int(month_param)
+    except ValueError:
+        current_year = today.year
+        current_month = today.month
     
     # 선택된 날짜 (쿼리 파라미터에서 가져오기)
     selected_date = request.args.get('date')
@@ -879,7 +962,10 @@ def schedule():
         except:
             selected_date = today
     else:
-        selected_date = today
+        if today.year == current_year and today.month == current_month:
+            selected_date = today
+        else:
+            selected_date = date(current_year, current_month, 1)
     
     # 캘린더 데이터
     calendar = get_schedule_calendar_data(current_year, current_month)
@@ -1782,6 +1868,10 @@ def add_exercise_record():
         record_date = request.form.get('date', date.today().isoformat())
         body_part = request.form.get('body_part', '')
         memo = request.form.get('memo', '')
+        total_time_raw = request.form.get('total_time')
+        total_time = int(total_time_raw) if total_time_raw else None
+        weight_raw = request.form.get('weight_kg')
+        weight_kg = float(weight_raw) if weight_raw else None
         exercise_name = memo if memo else body_part
         
         record = ExerciseRecord(
@@ -1789,6 +1879,8 @@ def add_exercise_record():
             date=datetime.strptime(record_date, '%Y-%m-%d').date(),
             body_part=body_part,
             exercise_name=exercise_name,
+            total_time=total_time,
+            weight_kg=weight_kg,
             memo=memo
         )
         
@@ -1881,6 +1973,8 @@ def exercise_record_detail(record_id):
         'id': record.id,
         'date': record.date.strftime('%Y-%m-%d'),
         'body_part': record.body_part,
+        'total_time': record.total_time,
+        'weight_kg': record.weight_kg,
         'memo': record.memo or ''
     })
 
@@ -1897,6 +1991,12 @@ def update_exercise_record(record_id):
         data = request.get_json()
         record.body_part = data.get('body_part', record.body_part)
         record.memo = data.get('memo', record.memo)
+        if 'total_time' in data:
+            total_time = data.get('total_time')
+            record.total_time = int(total_time) if total_time not in (None, '') else None
+        if 'weight_kg' in data:
+            weight_kg = data.get('weight_kg')
+            record.weight_kg = float(weight_kg) if weight_kg not in (None, '') else None
         if 'date' in data and data['date']:
             record.date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         record.exercise_name = record.memo or record.body_part

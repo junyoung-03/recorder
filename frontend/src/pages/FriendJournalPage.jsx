@@ -1,15 +1,126 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { supabase } from '../lib/supabaseClient';
+import { useInViewOnce } from '../hooks/useInViewOnce';
 
-function FriendJournalPage({
-  friendUser,
-  journals = [],
-  likedJournalIds = [],
-  friendsList = [],
-  categories = [],
-  categoryCounts = {},
-}) {
+function FriendJournalPage({ currentUser, friendId }) {
+  const [friendUser, setFriendUser] = useState(null);
+  const [journals, setJournals] = useState([]);
+  const [likedJournalIds, setLikedJournalIds] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [categoryCounts, setCategoryCounts] = useState({});
   const [recentOpen, setRecentOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
+
+  const loadFriendJournals = async (userId, targetId) => {
+    if (!userId || !targetId) return;
+    const { data: friendData } = await supabase
+      .from('users')
+      .select('id, username, nickname')
+      .eq('id', targetId)
+      .maybeSingle();
+    setFriendUser(friendData || null);
+
+    const { data: journalData } = await supabase
+      .from('journals')
+      .select('*')
+      .eq('user_id', targetId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    const counts = { __uncategorized: 0 };
+    (journalData || []).forEach((entry) => {
+      if (entry.category) {
+        counts[entry.category] = (counts[entry.category] || 0) + 1;
+      } else {
+        counts.__uncategorized += 1;
+      }
+    });
+    setCategoryCounts(counts);
+
+    const { data: categoryData } = await supabase
+      .from('journal_categories')
+      .select('*')
+      .eq('user_id', targetId)
+      .order('created_at', { ascending: true });
+    setCategories(categoryData || []);
+
+    const journalIds = (journalData || []).map((entry) => entry.id);
+    if (journalIds.length) {
+      const { data: likeData } = await supabase
+        .from('likes')
+        .select('id, journal_id, user_id')
+        .in('journal_id', journalIds);
+      const likedIds = (likeData || [])
+        .filter((like) => like.user_id === userId)
+        .map((like) => like.journal_id);
+      setLikedJournalIds(likedIds);
+      const likesByJournal = (likeData || []).reduce((acc, like) => {
+        acc[like.journal_id] = (acc[like.journal_id] || 0) + 1;
+        return acc;
+      }, {});
+      setJournals(
+        (journalData || []).map((entry) => ({
+          ...entry,
+          likesCount: likesByJournal[entry.id] || 0,
+        })),
+      );
+    } else {
+      setLikedJournalIds([]);
+      setJournals((journalData || []).map((entry) => ({ ...entry, likesCount: 0 })));
+    }
+
+    const { data: friendshipData } = await supabase
+      .from('friendships')
+      .select('*')
+      .eq('status', 'accepted')
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+    const friendIds = (friendshipData || []).map((row) =>
+      row.user_id === userId ? row.friend_id : row.user_id,
+    );
+    if (friendIds.length) {
+      const { data: friendsData } = await supabase
+        .from('users')
+        .select('id, username, nickname')
+        .in('id', friendIds);
+      setFriendsList(friendsData || []);
+    } else {
+      setFriendsList([]);
+    }
+  };
+
+  const handleToggleLike = async (journalId) => {
+    if (!currentUser?.id) return;
+    const isLiked = likedJournalIds.includes(journalId);
+    if (isLiked) {
+      await supabase.from('likes').delete().eq('journal_id', journalId).eq('user_id', currentUser.id);
+      setLikedJournalIds((prev) => prev.filter((id) => id !== journalId));
+    } else {
+      await supabase.from('likes').insert([{ journal_id: journalId, user_id: currentUser.id }]);
+      setLikedJournalIds((prev) => [...prev, journalId]);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentUser?.id || !friendId) return;
+    loadFriendJournals(currentUser.id, friendId);
+  }, [currentUser?.id, friendId]);
+
+  useEffect(() => {
+    if (!currentUser?.id || !friendId) return;
+    const channel = supabase
+      .channel(`friend-journals-${friendId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes' },
+        () => loadFriendJournals(currentUser.id, friendId),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id, friendId]);
 
   const getCategoryJournals = (categoryKey) => {
     if (categoryKey === 'all') {
@@ -22,6 +133,24 @@ function FriendJournalPage({
   };
 
   const visibleJournals = activeCategory ? getCategoryJournals(activeCategory) : journals;
+
+  const reduceMotion = useReducedMotion();
+
+  const TimelineCard = ({ children }) => {
+    const ref = useRef(null);
+    const isInView = useInViewOnce(ref);
+    return (
+      <motion.article
+        ref={ref}
+        initial={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
+        animate={isInView ? { opacity: 1, y: 0 } : undefined}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="bg-white rounded-lg shadow-md p-5 motion-card"
+      >
+        {children}
+      </motion.article>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -142,7 +271,7 @@ function FriendJournalPage({
         <div className="flex-1 space-y-4 lg:order-2">
           {visibleJournals.length > 0 ? (
             visibleJournals.map((journal) => (
-              <article key={journal.id} className="bg-white rounded-lg shadow-md p-5">
+              <TimelineCard key={journal.id}>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm" style={{ color: '#6B7280' }}>{journal.date}</p>
                   <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
@@ -157,21 +286,19 @@ function FriendJournalPage({
                   {(journal.content || '').length > 180 ? '...' : ''}
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mt-4 text-xs" style={{ color: '#6B7280' }}>
-                  <form method="post" action={`/journal/${journal.id}/like`}>
-                    <input type="hidden" name="next" value={`/friend/${friendUser?.id}/journal`} />
-                    <button
-                      type="submit"
-                      className={`text-xs px-2 py-1 rounded border ${
-                        likedJournalIds.includes(journal.id) ? 'calm-blue-bg text-white' : 'text-gray-600'
-                      }`}
-                    >
-                      {likedJournalIds.includes(journal.id) ? '좋아요 취소' : '좋아요'}
-                    </button>
-                  </form>
-                  <span>좋아요 {journal.likes?.length || 0}</span>
-                  <span>댓글 {journal.comments?.length || 0}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleLike(journal.id)}
+                    className={`text-xs px-2 py-1 rounded border ${
+                      likedJournalIds.includes(journal.id) ? 'calm-blue-bg text-white' : 'text-gray-600'
+                    }`}
+                  >
+                    {likedJournalIds.includes(journal.id) ? '좋아요 취소' : '좋아요'}
+                  </button>
+                  <span>좋아요 {journal.likesCount || 0}</span>
+                  <span>댓글 0</span>
                 </div>
-              </article>
+              </TimelineCard>
             ))
           ) : (
             <div className="bg-white rounded-lg shadow-md p-8 text-center" style={{ color: '#6B7280' }}>

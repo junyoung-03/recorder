@@ -11,10 +11,10 @@
 
 ## 2. 핵심 원칙 (현재 구현)
 
-- 개인 데이터는 **권한 함수 + 쿼리 조건**으로 제한한다.
-- 친구 공유 데이터는 **`is_friend`, `can_view_*` 권한 함수**로 제한한다.
-- 이미지 저장은 **로컬 / Cloudflare R2 / Supabase Storage** 중 선택 가능하다.
-- 프론트는 React(Vite), 서버는 Flask(세션 기반) 구조다.
+- 개인 데이터는 **Supabase RLS**로 제한한다.
+- 친구 공유 데이터는 **friendships 기반 RLS 정책**으로 제한한다.
+- 이미지 저장은 **Supabase Storage** 사용.
+- 프론트는 React(Vite), 서버는 없고 Supabase(Auth/DB/Storage)로 구성된다.
 
 ---
 
@@ -24,13 +24,12 @@
 Client (Browser)
     |
     v
-Flask Application (dev: run.py / prod: gunicorn)
+Supabase (Auth + Postgres + RLS + Storage)
     |
     +------------------+------------------+
     |                  |                  |
     v                  v                  v
-SQLite/Postgres    Object Storage     Static Assets
-(local/Supabase)   (Local/R2/Supabase) (Vite build)
+Auth Session       Postgres (RLS)     Storage (Images)
 ```
 
 ---
@@ -38,29 +37,28 @@ SQLite/Postgres    Object Storage     Static Assets
 ## 4. 서버/인프라 구성 (현재 구현)
 
 ### 4.1 실행 방식
-- 개발: `python run.py`
-- 배포: `gunicorn run:app`
+- 개발: `npm run dev` (Vite)
+- 배포: Vercel (정적 프론트)
 
 ### 4.2 인증/세션
-- Flask-Login 기반 세션 인증
-- 별도 Redis 세션 저장소는 **현재 미사용**
+- Supabase Auth 기반 인증
+- 프론트에서 `supabase.auth.getUser()`로 사용자 식별
 
 ### 4.3 데이터베이스
-- 기본: SQLite (`instance/database.db`)
-- 선택: Supabase Postgres (`DATABASE_URL` / `SUPABASE_DB_URL`)
+- Supabase Postgres 고정 사용
 
 ---
 
-## 5. 도메인 구조 (현재 라우트 기준)
+## 5. 도메인 구조 (현재 코드 기준)
 
 ### 5.1 도메인 분리
 | Domain | 설명 |
 |---|---|
-| Auth | 로그인/로그아웃/회원가입 |
+| Auth | 로그인/회원가입 |
 | Friends | 친구 요청/수락/차단 |
 | Private | 개인 전용 데이터 |
 | Social | 친구 공유 데이터 |
-| Media Access | 이미지 접근 제어 |
+| Media Access | 스토리지 접근 제어 |
 
 ### 5.2 Private Domain (Owner-only)
 **포함**
@@ -71,8 +69,7 @@ SQLite/Postgres    Object Storage     Static Assets
 - 할 일
 
 **보안**
-- 권한 함수 또는 `user_id == current_user.id` 조건으로 제한
-- URL 직접 접근도 서버에서 차단
+- RLS 정책 `auth.uid() = user_id`
 
 ### 5.3 Social Domain (Friends-only)
 **포함**
@@ -81,7 +78,7 @@ SQLite/Postgres    Object Storage     Static Assets
 
 **보안**
 - 친구 관계는 상호 승인
-- `is_friend`, `can_view_meal`, `can_view_journal`로 제한
+- RLS에서 `friendships` + `visibility`로 제한
 
 ---
 
@@ -92,25 +89,23 @@ SQLite/Postgres    Object Storage     Static Assets
 - 친구 클릭 시 전용 뷰어로 접근
 
 **라우트**
-- `/friend/<friend_id>/meals`
-- `/friend/<friend_id>/journal`
+- `/friend/:id/meals`
+- `/friend/:id/journal`
 
 ---
 
 ## 7. 이미지 저장/접근 구조
 
 ### 7.1 저장 방식
-- 로컬: `static/uploads`
-- 선택: Cloudflare R2 / Supabase Storage
+- Supabase Storage bucket 사용 (`meals`, `body`)
 
 ### 7.2 접근 방식
-- 로컬 파일은 서버가 직접 제공
-- 클라우드 URL은 리다이렉트로 제공
-- 권한 검사는 서버에서 수행
+- Supabase Storage RLS로 접근 제어
+- 클라이언트는 Storage public URL 또는 signed URL 사용
 
 ---
 
-## 8. 데이터베이스 모델 (models.py 기준)
+## 8. 데이터베이스 모델 (Supabase 테이블 기준)
 
 **사용자/관계**
 - `users`
@@ -137,11 +132,10 @@ SQLite/Postgres    Object Storage     Static Assets
 
 | 영역 | 기술 | 비고 |
 |---|---|---|
-| Backend | Flask | 서버/권한/세션 |
-| WSGI | Gunicorn | 배포용 |
-| DB | SQLite / Postgres | 로컬/운영 전환 |
-| Auth | Flask-Login | 세션 기반 |
-| Storage | Local / R2 / Supabase | 이미지 저장 |
+| Backend | 없음 | Supabase로 대체 |
+| DB | Supabase Postgres | RLS 사용 |
+| Auth | Supabase Auth | 토큰 기반 |
+| Storage | Supabase Storage | 이미지 저장 |
 | Front | React + Vite | SPA |
 | Style | Tailwind CSS | UI |
 
@@ -169,48 +163,27 @@ SQLite/Postgres    Object Storage     Static Assets
                                |
                                v
 +-------------------------------------------------------------+
-|                    Flask Application                        |
-|                (Gunicorn + Flask)                           |
+|                         Supabase                            |
+|  Auth (JWT) + Postgres (RLS) + Storage                      |
 |                                                             |
-|  Auth / Session -> Flask-Login                              |
-|                                                             |
-|  Domain Router (Blueprint)                                  |
-|    PRIVATE DOMAIN  -> owner-only                            |
-|    SOCIAL DOMAIN   -> friend-only                           |
-|    MEDIA ACCESS    -> local file / redirect                 |
+|  RLS 정책으로 권한 제어                                      |
+|  Storage RLS로 이미지 접근 제어                              |
 +------------------------------+------------------------------+
-                               |
-                 +-------------+-------------+
-                 |                           |
-                 v                           v
-+------------------------+        +---------------------------+
-| SQLite / Postgres      |        | Object Storage            |
-| - users                |        | - meal images             |
-| - friendships          |        | - body images             |
-| - finance_records      |        | - URL redirect            |
-| - schedules            |        +---------------------------+
-| - exercise_records     |
-| - meal_records         |
-| - journals             |
-| - comments / likes     |
-+------------------------+
 ```
 
 ---
 
 ## 11. 한 문장 요약
 
-Recorder는 개인 데이터는 권한 함수/쿼리 조건으로 분리하고,  
-친구 공유는 서버 권한 검사로 제한하며,  
-이미지는 로컬 또는 클라우드 저장소로 분리 가능한  
-현재 구현 기준의 생활 기록 웹 서비스다.
+Recorder는 Supabase Auth/RLS/Storage로 권한과 데이터를 관리하고,  
+프론트엔드에서 직접 DB/스토리지를 접근하는  
+서버리스 구조의 생활 기록 웹 서비스다.
 
 ---
 
 ## 12. 확장/권장 사항 (운영)
-- Redis 세션 스토어 도입
-- PostgreSQL 고정 및 마이그레이션 자동화
-- Signed URL 기반 미디어 제공
-- TLS/보안 헤더/Rate Limit 적용
+- RLS 정책 테스트/감사 자동화
+- Edge Function 도입(대량 Export, 서명 URL)
+- Storage signed URL 사용 범위 확대
 
 

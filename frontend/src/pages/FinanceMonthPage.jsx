@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 const formatKoreanDate = (value) => {
   if (!value) return '';
@@ -6,7 +7,46 @@ const formatKoreanDate = (value) => {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 };
 
-function FinanceMonthPage({ yearOptions = [], currentYear, currentMonth, cards = [] }) {
+function FinanceMonthPage({ currentUser }) {
+  const today = useMemo(() => new Date(), []);
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [currentYear, setCurrentYear] = useState(() => Number(urlParams.get('year')) || today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => Number(urlParams.get('month')) || today.getMonth() + 1);
+  const [cards, setCards] = useState([]);
+  const yearOptions = useMemo(() => Array.from({ length: 7 }, (_, idx) => today.getFullYear() - 5 + idx), [today]);
+
+  const loadMonthRecords = async (userId, year, month) => {
+    if (!userId) return;
+    const startDate = new Date(year, month - 1, 1).toISOString().slice(0, 10);
+    const endDate = new Date(year, month, 0).toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('finance_records')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true })
+      .order('created_at', { ascending: false });
+    const grouped = new Map();
+    (data || []).forEach((record) => {
+      const key = record.date;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(record);
+    });
+    const totalDays = new Date(year, month, 0).getDate();
+    const nextCards = [];
+    for (let day = 1; day <= totalDays; day += 1) {
+      const dateKey = new Date(year, month - 1, day).toISOString().slice(0, 10);
+      nextCards.push({ date: dateKey, records: grouped.get(dateKey) || [] });
+    }
+    setCards(nextCards);
+  };
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    loadMonthRecords(currentUser.id, currentYear, currentMonth);
+  }, [currentUser?.id, currentYear, currentMonth]);
+
   return (
     <div className="max-w-6xl mx-auto">
       <section className="bg-white rounded-lg shadow-xl p-6">
@@ -15,13 +55,33 @@ function FinanceMonthPage({ yearOptions = [], currentYear, currentMonth, cards =
           <button onClick={() => window.history.back()} className="px-4 py-2 border rounded-md transition" style={{ borderColor: '#E5E7EB' }}>닫기</button>
         </div>
 
-        <form method="get" className="flex items-center gap-2 mb-6">
-          <select name="year" className="px-3 py-2 border rounded-md" style={{ borderColor: '#E5E7EB' }} defaultValue={currentYear}>
+        <form
+          className="flex items-center gap-2 mb-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (currentUser?.id) {
+              loadMonthRecords(currentUser.id, currentYear, currentMonth);
+            }
+          }}
+        >
+          <select
+            name="year"
+            className="px-3 py-2 border rounded-md"
+            style={{ borderColor: '#E5E7EB' }}
+            value={currentYear}
+            onChange={(event) => setCurrentYear(Number(event.target.value))}
+          >
             {yearOptions.map((year) => (
               <option key={year} value={year}>{year}년</option>
             ))}
           </select>
-          <select name="month" className="px-3 py-2 border rounded-md" style={{ borderColor: '#E5E7EB' }} defaultValue={currentMonth}>
+          <select
+            name="month"
+            className="px-3 py-2 border rounded-md"
+            style={{ borderColor: '#E5E7EB' }}
+            value={currentMonth}
+            onChange={(event) => setCurrentMonth(Number(event.target.value))}
+          >
             {Array.from({ length: 12 }, (_, idx) => idx + 1).map((month) => (
               <option key={month} value={month}>{month}월</option>
             ))}
