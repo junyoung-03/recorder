@@ -38,6 +38,19 @@ function RegisterPage() {
       return;
     }
     setError(null);
+    const { data: existingUser, error: lookupError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', trimmedEmail)
+      .maybeSingle();
+    if (lookupError) {
+      setError('이미 가입된 이메일인지 확인할 수 없습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    if (existingUser?.id) {
+      setError('이미 가입된 이메일 입니다.');
+      return;
+    }
     setLoading(true);
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: trimmedEmail,
@@ -134,6 +147,7 @@ function RegisterPage() {
         id: sessionData.user.id,
         username: username.trim(),
         nickname: nickname.trim() || null,
+        email: trimmedEmail,
       };
       const { error: profileError } = await supabase.from('users').upsert(
         [

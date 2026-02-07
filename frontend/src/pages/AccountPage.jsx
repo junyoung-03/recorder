@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 const MENU_ITEMS = [
@@ -29,11 +29,19 @@ const SectionCard = ({ title, description, children, note }) => (
 
 function AccountPage({ currentUser }) {
   const [activeKey, setActiveKey] = useState('profile');
-  const displayName = currentUser?.nickname || currentUser?.username || '사용자';
-  const username = currentUser?.username || 'an519221';
-  const email = currentUser?.email || '';
   const [nickname, setNickname] = useState(currentUser?.nickname || '');
   const [birthDate, setBirthDate] = useState('');
+  const [savingNickname, setSavingNickname] = useState(false);
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
+  const nicknameInputRef = useRef(null);
+  const [recordStats, setRecordStats] = useState(null);
+  const [recordStatsError, setRecordStatsError] = useState(null);
+  const displayName = nickname.trim() || currentUser?.nickname || currentUser?.username || '사용자';
+  const username = currentUser?.username || 'an519221';
+  const email = currentUser?.email || '';
+  const nicknameSaveTimer = useRef(null);
+  const lastSavedBirthDate = useRef(null);
+  const birthSaveTimer = useRef(null);
   const [language, setLanguage] = useState('ko');
   const [dateFormat, setDateFormat] = useState('yyyy-mm-dd');
   const [weekStart, setWeekStart] = useState('monday');
@@ -60,8 +68,144 @@ function AccountPage({ currentUser }) {
     }
   }, [currentUser?.birth_date]);
 
+  useEffect(() => {
+    if (isEditingNickname) return;
+    setNickname(currentUser?.nickname || '');
+  }, [currentUser?.nickname, isEditingNickname]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let isActive = true;
+
+    const loadRecordStats = async () => {
+      setRecordStatsError(null);
+      const tables = [
+        { key: 'journals', label: '일기', table: 'journals' },
+        { key: 'exercise', label: '운동', table: 'exercise_records' },
+        { key: 'todos', label: '할 일', table: 'todos' },
+        { key: 'schedules', label: '일정', table: 'schedules' },
+        { key: 'finance', label: '가계부', table: 'finance_records' },
+        { key: 'meals', label: '식단', table: 'meal_records' },
+        { key: 'body', label: '몸 기록', table: 'body_records' },
+      ];
+
+      const results = await Promise.all(
+        tables.map(async (item) => {
+          const { count, error } = await supabase
+            .from(item.table)
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', currentUser.id);
+          return { ...item, count: error ? null : count || 0, error };
+        }),
+      );
+
+      if (!isActive) return;
+      if (results.every((item) => item.error)) {
+        setRecordStatsError('기록 통계를 불러오지 못했습니다.');
+        return;
+      }
+
+      const validResults = results.filter((item) => item.count !== null);
+      const total = validResults.reduce((sum, item) => sum + (item.count || 0), 0);
+      setRecordStats({ total, items: validResults });
+    };
+
+    loadRecordStats();
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (isEditingNickname) {
+      nicknameInputRef.current?.focus();
+    }
+  }, [isEditingNickname]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (!birthDate) return;
+    if (lastSavedBirthDate.current === birthDate) return;
+
+    if (birthSaveTimer.current) {
+      window.clearTimeout(birthSaveTimer.current);
+    }
+
+    birthSaveTimer.current = window.setTimeout(async () => {
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { birth_date: birthDate },
+      });
+      if (updateError) return;
+
+      const payload = {
+        id: currentUser.id,
+        username: currentUser.username,
+        nickname: currentUser.nickname,
+        email: currentUser.email || null,
+        birth_date: birthDate,
+      };
+      const { error: profileError } = await supabase.from('users').upsert([payload], { onConflict: 'id' });
+      if (!profileError) {
+        lastSavedBirthDate.current = birthDate;
+        window.dispatchEvent(new CustomEvent('app:profile-updated', { detail: { birth_date: birthDate } }));
+      }
+    }, 300);
+
+    return () => {
+      if (birthSaveTimer.current) {
+        window.clearTimeout(birthSaveTimer.current);
+      }
+    };
+  }, [birthDate, currentUser]);
+
   const handleNotReady = (message = '해당 기능은 준비 중입니다.') => {
     alert(message);
+  };
+
+  const handleSaveNickname = async () => {
+    if (!currentUser?.id) return;
+    const trimmedNickname = nickname.trim();
+    setSavingNickname(true);
+    if (nicknameSaveTimer.current) {
+      window.clearTimeout(nicknameSaveTimer.current);
+    }
+    nicknameSaveTimer.current = window.setTimeout(() => {
+      setSavingNickname(false);
+      nicknameSaveTimer.current = null;
+    }, 8000);
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { nickname: trimmedNickname || null },
+      });
+      if (updateError) {
+        alert('닉네임 저장에 실패했습니다.');
+        return;
+      }
+
+      const payload = {
+        id: currentUser.id,
+        username: currentUser.username,
+        nickname: trimmedNickname || null,
+        email: currentUser.email || null,
+        birth_date: birthDate || null,
+      };
+      const { error: profileError } = await supabase.from('users').upsert([payload], { onConflict: 'id' });
+      if (profileError) {
+        alert('닉네임 저장에 실패했습니다.');
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('app:profile-updated', { detail: { nickname: trimmedNickname } }));
+      setIsEditingNickname(false);
+      alert('닉네임이 저장되었습니다.');
+    } finally {
+      setSavingNickname(false);
+      if (nicknameSaveTimer.current) {
+        window.clearTimeout(nicknameSaveTimer.current);
+        nicknameSaveTimer.current = null;
+      }
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -73,21 +217,7 @@ function AccountPage({ currentUser }) {
     }
   };
 
-  const handleSyncProfile = async () => {
-    if (!currentUser?.id) return;
-    const payload = {
-      id: currentUser.id,
-      username: currentUser.username,
-      nickname: currentUser.nickname,
-      birth_date: birthDate || null,
-    };
-    const { error } = await supabase.from('users').upsert([payload], { onConflict: 'id' });
-    if (error) {
-      alert('프로필 동기화에 실패했습니다.');
-      return;
-    }
-    alert('프로필 동기화가 완료되었습니다.');
-  };
+  
 
   return (
     <div className="space-y-6">
@@ -139,9 +269,6 @@ function AccountPage({ currentUser }) {
                     <button type="button" className="btn-ghost px-2 text-sm font-semibold" onClick={() => handleNotReady()}>
                       사진 변경
                     </button>
-                    <button type="button" className="btn-secondary px-4 py-2 text-sm font-semibold" onClick={handleSyncProfile}>
-                      프로필 동기화
-                    </button>
                   </div>
                 </div>
               </div>
@@ -160,11 +287,24 @@ function AccountPage({ currentUser }) {
                           type="text"
                           value={nickname}
                           onChange={(event) => setNickname(event.target.value)}
-                          className="flex-1 text-sm font-semibold text-slate-800 bg-transparent focus:outline-none"
+                          ref={nicknameInputRef}
+                          disabled={!isEditingNickname}
+                          className={`flex-1 text-sm font-semibold text-slate-800 bg-transparent focus:outline-none ${!isEditingNickname ? 'cursor-not-allowed text-slate-400' : ''}`}
                           placeholder="닉네임 입력"
                         />
-                        <button type="button" className="btn-secondary px-3 py-1.5 text-xs font-semibold" onClick={() => handleNotReady('닉네임 저장은 준비 중입니다.')}>
-                          저장
+                        <button
+                          type="button"
+                          className="btn-secondary px-3 py-1.5 text-xs font-semibold"
+                          onClick={() => {
+                            if (!isEditingNickname) {
+                              setIsEditingNickname(true);
+                              return;
+                            }
+                            handleSaveNickname();
+                          }}
+                          disabled={savingNickname}
+                        >
+                          {savingNickname ? '수정 중...' : (isEditingNickname ? '완료' : '수정')}
                         </button>
                       </div>
                     </div>
@@ -185,14 +325,29 @@ function AccountPage({ currentUser }) {
 
               <SectionCard
                 title="내 기록 통계"
-                description="연속 기록일과 총 기록 수를 간단히 요약합니다."
+                description="Recorder에 저장된 기록 현황을 요약합니다."
               >
-                <div className="space-y-1">
-                  <div>연속 기록일: 7일</div>
-                  <div>총 기록 수: 123개</div>
-                  <div>일기: 10편 · 운동 기록: 4개 · 할 일: 20개</div>
-                </div>
+                {recordStatsError ? (
+                  <div className="text-sm text-slate-500">{recordStatsError}</div>
+                ) : recordStats && recordStats.total === 0 ? (
+                  <div className="text-sm text-slate-600">
+                    아직 기록이 없어요. 오늘의 일정, 할 일, 지출, 운동 중 하나만 간단히 기록해보세요.
+                  </div>
+                ) : recordStats ? (
+                  <div className="space-y-1 text-sm text-slate-700">
+                    <div>총 기록 수: {recordStats.total}개</div>
+                    <div>
+                      {recordStats.items
+                        .filter((item) => item.count && item.count > 0)
+                        .map((item) => `${item.label}: ${item.count}개`)
+                        .join(' · ')}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500">기록 통계를 불러오는 중입니다...</div>
+                )}
               </SectionCard>
+
             </div>
           )}
 

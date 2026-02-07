@@ -12,19 +12,20 @@ const navLinks = [
   { href: '/friends', label: '친구' },
 ];
 
-const publicPages = new Set(['landing', 'login', 'register']);
+const publicPages = new Set(['landing', 'login', 'register', 'resetPassword']);
 
 function BaseLayout({ children, currentUser, activePath = '/', page }) {
   const isActive = (path) => activePath === path;
   const isAuthenticated = Boolean(currentUser?.isAuthenticated);
   const isPublic = publicPages.has(page);
   const isLanding = page === 'landing';
+  const isResetPassword = page === 'resetPassword';
 
   if (isLanding) {
     return <div className="min-h-screen bg-warm">{children}</div>;
   }
 
-  if (!isAuthenticated && isPublic) {
+  if ((!isAuthenticated && isPublic) || isResetPassword) {
     return (
       <div className="min-h-screen bg-warm">
         <header className="bg-white border-b border-slate-200">
@@ -88,7 +89,10 @@ function BaseLayout({ children, currentUser, activePath = '/', page }) {
             {currentUser?.nickname || currentUser?.username} 님
             <button
               type="button"
-              onClick={() => supabase.auth.signOut()}
+              onClick={async () => {
+                await supabase.auth.signOut();
+                navigate('/login');
+              }}
               className="block mt-3 text-blue-600 font-semibold"
             >
               로그아웃
