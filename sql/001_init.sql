@@ -162,28 +162,6 @@ create trigger trg_body_records_updated_at
 before update on public.body_records
 for each row execute function public.set_updated_at();
 
--- meal_records
-create table if not exists public.meal_records (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  record_date date not null,
-  meal_type text,
-  food_name text,
-  calories integer,
-  image_path text,
-  memo text,
-  visibility text not null default 'private' check (visibility in ('private','friends','public')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists meal_records_user_date_idx
-on public.meal_records (user_id, record_date);
-
-create trigger trg_meal_records_updated_at
-before update on public.meal_records
-for each row execute function public.set_updated_at();
-
 -- journals
 create table if not exists public.journals (
   id uuid primary key default gen_random_uuid(),
@@ -218,22 +196,16 @@ create trigger trg_journal_categories_updated_at
 before update on public.journal_categories
 for each row execute function public.set_updated_at();
 
--- comments (meal or journal)
+-- comments (journal)
 create table if not exists public.comments (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  meal_id uuid references public.meal_records(id) on delete cascade,
   journal_id uuid references public.journals(id) on delete cascade,
   content text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint comments_target_check check (
-    (meal_id is not null and journal_id is null) or
-    (meal_id is null and journal_id is not null)
-  )
+  updated_at timestamptz not null default now()
 );
 
-create index if not exists comments_meal_idx on public.comments (meal_id);
 create index if not exists comments_journal_idx on public.comments (journal_id);
 create index if not exists comments_user_idx on public.comments (user_id);
 
@@ -241,32 +213,23 @@ create trigger trg_comments_updated_at
 before update on public.comments
 for each row execute function public.set_updated_at();
 
--- likes (meal or journal)
+-- likes (journal)
 create table if not exists public.likes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  meal_id uuid references public.meal_records(id) on delete cascade,
   journal_id uuid references public.journals(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint likes_target_check check (
-    (meal_id is not null and journal_id is null) or
-    (meal_id is null and journal_id is not null)
-  )
+  constraint likes_target_check check (journal_id is not null)
 );
-
-create unique index if not exists likes_unique_meal
-on public.likes (user_id, meal_id) where meal_id is not null;
 
 create unique index if not exists likes_unique_journal
 on public.likes (user_id, journal_id) where journal_id is not null;
 
-create index if not exists likes_meal_idx on public.likes (meal_id);
 create index if not exists likes_journal_idx on public.likes (journal_id);
 create index if not exists likes_user_idx on public.likes (user_id);
 
 create trigger trg_likes_updated_at
 before update on public.likes
 for each row execute function public.set_updated_at();
-
 

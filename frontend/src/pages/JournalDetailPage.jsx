@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
 
-function JournalDetailPage({ currentUser, journalId }) {
+function JournalDetailPage({ currentUser, journalId, friendId, friendMode }) {
+  const isFriendMode = Boolean(friendId) || Boolean(friendMode);
+  const targetUserId = isFriendMode ? friendId : currentUser?.id;
   const [journal, setJournal] = useState(null);
   const [journals, setJournals] = useState([]);
   const [friendsList, setFriendsList] = useState([]);
@@ -17,6 +19,12 @@ function JournalDetailPage({ currentUser, journalId }) {
   const [categoryEditMode, setCategoryEditMode] = useState(false);
   const [categoryAddMode, setCategoryAddMode] = useState(false);
 
+  useEffect(() => {
+    if (!isFriendMode) return;
+    setCategoryEditMode(false);
+    setCategoryAddMode(false);
+  }, [isFriendMode]);
+
   const categoryCounts = useMemo(() => {
     const counts = { __uncategorized: 0 };
     journals.forEach((entry) => {
@@ -30,6 +38,7 @@ function JournalDetailPage({ currentUser, journalId }) {
   }, [journals]);
 
   const handleAddCategory = async () => {
+    if (isFriendMode) return;
     const trimmed = newCategory.trim();
     if (!trimmed) return;
     const exists = categories.some((category) => category.name === trimmed);
@@ -65,6 +74,7 @@ function JournalDetailPage({ currentUser, journalId }) {
   };
 
   const handleRemoveCategory = async (categoryId) => {
+    if (isFriendMode) return;
     try {
       const { error } = await supabase.from('journal_categories').delete().eq('id', categoryId);
       if (error) {
@@ -77,46 +87,57 @@ function JournalDetailPage({ currentUser, journalId }) {
   };
 
   useEffect(() => {
-    if (!currentUser?.id || !journalId) return;
+    if (!currentUser?.id || !journalId || !targetUserId) return;
     const loadJournalData = async () => {
-      const { data: journalData } = await supabase
+      let journalQuery = supabase
         .from('journals')
         .select('*')
-        .eq('id', journalId)
-        .maybeSingle();
+        .eq('id', journalId);
+      if (isFriendMode) {
+        journalQuery = journalQuery.eq('user_id', targetUserId).in('visibility', ['friends', 'public']);
+      }
+      const { data: journalData } = await journalQuery.maybeSingle();
       setJournal(journalData || null);
 
-      const { data: journalList } = await supabase
+      let listQuery = supabase
         .from('journals')
         .select('*')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', targetUserId)
         .order('date', { ascending: false })
         .order('created_at', { ascending: false });
+      if (isFriendMode) {
+        listQuery = listQuery.in('visibility', ['friends', 'public']);
+      }
+      const { data: journalList } = await listQuery;
       setJournals(journalList || []);
 
       const { data: categoryData } = await supabase
         .from('journal_categories')
         .select('*')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', targetUserId)
         .order('created_at', { ascending: true });
       setCategories(categoryData || []);
 
-      const { data: friendshipData } = await supabase
-        .from('friendships')
-        .select('*')
-        .eq('status', 'accepted')
-        .or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`);
-      const friendIds = (friendshipData || []).map((row) =>
-        row.user_id === currentUser.id ? row.friend_id : row.user_id,
-      );
-      if (friendIds.length) {
-        const { data: friendsData } = await supabase
-          .from('users')
-          .select('id, username, nickname')
-          .in('id', friendIds);
-        setFriendsList(friendsData || []);
-      } else {
+      if (isFriendMode) {
         setFriendsList([]);
+      } else {
+        const { data: friendshipData } = await supabase
+          .from('friendships')
+          .select('*')
+          .eq('status', 'accepted')
+          .or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`);
+        const friendIds = (friendshipData || []).map((row) =>
+          row.user_id === currentUser.id ? row.friend_id : row.user_id,
+        );
+        if (friendIds.length) {
+          const { data: friendsData } = await supabase
+            .from('users')
+            .select('id, username, nickname')
+            .in('id', friendIds);
+          setFriendsList(friendsData || []);
+        } else {
+          setFriendsList([]);
+        }
       }
 
       const { data: likeData } = await supabase
@@ -148,7 +169,7 @@ function JournalDetailPage({ currentUser, journalId }) {
       setComments(mappedComments);
     };
     loadJournalData();
-  }, [currentUser?.id, journalId]);
+  }, [currentUser?.id, journalId, targetUserId, isFriendMode]);
 
   useEffect(() => {
     if (!journalId) return;
@@ -281,19 +302,21 @@ function JournalDetailPage({ currentUser, journalId }) {
             >
               <span>카테고리</span>
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setCategoryEditMode((prev) => !prev);
-                    if (categoryEditMode) {
-                      setCategoryAddMode(false);
-                    }
-                  }}
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                >
-                  {categoryEditMode ? 'DONE' : 'EDIT'}
-                </button>
+                {!isFriendMode && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setCategoryEditMode((prev) => !prev);
+                      if (categoryEditMode) {
+                        setCategoryAddMode(false);
+                      }
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    {categoryEditMode ? 'DONE' : 'EDIT'}
+                  </button>
+                )}
                 <span>{categoryOpen ? '^' : 'v'}</span>
               </div>
             </button>
@@ -314,7 +337,7 @@ function JournalDetailPage({ currentUser, journalId }) {
                     {getCategoryJournals('all').map((entry) => (
                       <a
                         key={entry.id}
-                        href={`/journal/${entry.id}`}
+                        href={isFriendMode ? `/friend/${friendId}/journal/${entry.id}` : `/journal/${entry.id}`}
                         className="block truncate hover:underline"
                         style={{ color: '#374151' }}
                       >
@@ -343,7 +366,7 @@ function JournalDetailPage({ currentUser, journalId }) {
                     {getCategoryJournals('__uncategorized').map((entry) => (
                       <a
                         key={entry.id}
-                        href={`/journal/${entry.id}`}
+                        href={isFriendMode ? `/friend/${friendId}/journal/${entry.id}` : `/journal/${entry.id}`}
                         className="block truncate hover:underline"
                         style={{ color: '#374151' }}
                       >
@@ -369,7 +392,7 @@ function JournalDetailPage({ currentUser, journalId }) {
                       </button>
                       <div className="flex items-center gap-2 text-xs text-gray-400">
                         <span>({categoryCounts[category.name] || 0})</span>
-                        {categoryEditMode && (
+                        {categoryEditMode && !isFriendMode && (
                           <button
                             type="button"
                             onClick={() => handleRemoveCategory(category.id)}
@@ -386,7 +409,7 @@ function JournalDetailPage({ currentUser, journalId }) {
                         {getCategoryJournals(category.name).map((entry) => (
                           <a
                             key={entry.id}
-                            href={`/journal/${entry.id}`}
+                            href={isFriendMode ? `/friend/${friendId}/journal/${entry.id}` : `/journal/${entry.id}`}
                             className="block truncate hover:underline"
                             style={{ color: '#374151' }}
                           >
@@ -402,63 +425,65 @@ function JournalDetailPage({ currentUser, journalId }) {
                     )}
                   </div>
                 ))}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCategoryAddMode((prev) => !prev);
-                      if (categoryAddMode) {
-                        setNewCategory('');
-                      }
-                    }}
-                    className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-sm hover:bg-gray-50 transition"
-                    aria-label="카테고리 추가"
-                  >
-                    +
-                  </button>
-                  {categoryAddMode && (
-                    <>
-                      <input
-                        type="text"
-                        value={newCategory}
-                        onChange={(event) => setNewCategory(event.target.value)}
-                        onKeyDown={handleCategoryKeyDown}
-                        onBlur={() => {
-                          if (!newCategory.trim()) {
-                            setCategoryAddMode(false);
-                          }
-                        }}
-                        placeholder="카테고리 이름 입력"
-                        className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddCategory}
-                        disabled={!newCategory.trim()}
-                        className="text-xs px-3 py-1.5 rounded-md border transition"
-                        style={{
-                          backgroundColor: newCategory.trim() ? '#F3F4F6' : '#FAFAFA',
-                          borderColor: '#E5E7EB',
-                          color: newCategory.trim() ? '#6B7280' : '#D1D5DB',
-                          cursor: newCategory.trim() ? 'pointer' : 'not-allowed'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (newCategory.trim()) {
-                            e.target.style.backgroundColor = '#E5E7EB';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (newCategory.trim()) {
-                            e.target.style.backgroundColor = '#F3F4F6';
-                          }
-                        }}
-                      >
-                        등록
-                      </button>
-                    </>
-                  )}
-                </div>
+                {!isFriendMode && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategoryAddMode((prev) => !prev);
+                        if (categoryAddMode) {
+                          setNewCategory('');
+                        }
+                      }}
+                      className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-sm hover:bg-gray-50 transition"
+                      aria-label="카테고리 추가"
+                    >
+                      +
+                    </button>
+                    {categoryAddMode && (
+                      <>
+                        <input
+                          type="text"
+                          value={newCategory}
+                          onChange={(event) => setNewCategory(event.target.value)}
+                          onKeyDown={handleCategoryKeyDown}
+                          onBlur={() => {
+                            if (!newCategory.trim()) {
+                              setCategoryAddMode(false);
+                            }
+                          }}
+                          placeholder="카테고리 이름 입력"
+                          className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddCategory}
+                          disabled={!newCategory.trim()}
+                          className="text-xs px-3 py-1.5 rounded-md border transition"
+                          style={{
+                            backgroundColor: newCategory.trim() ? '#F3F4F6' : '#FAFAFA',
+                            borderColor: '#E5E7EB',
+                            color: newCategory.trim() ? '#6B7280' : '#D1D5DB',
+                            cursor: newCategory.trim() ? 'pointer' : 'not-allowed'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (newCategory.trim()) {
+                              e.target.style.backgroundColor = '#E5E7EB';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (newCategory.trim()) {
+                              e.target.style.backgroundColor = '#F3F4F6';
+                            }
+                          }}
+                        >
+                          등록
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -475,7 +500,12 @@ function JournalDetailPage({ currentUser, journalId }) {
             {recentOpen && (
               <div className="px-5 pb-4 space-y-2 text-sm">
                 {journals.slice(0, 5).map((recent) => (
-                  <a key={recent.id} href={`/journal/${recent.id}`} className="block truncate hover:underline" style={{ color: '#374151' }}>
+                  <a
+                    key={recent.id}
+                    href={isFriendMode ? `/friend/${friendId}/journal/${recent.id}` : `/journal/${recent.id}`}
+                    className="block truncate hover:underline"
+                    style={{ color: '#374151' }}
+                  >
                     {recent.title || '제목 없음'}
                   </a>
                 ))}
@@ -588,25 +618,34 @@ function JournalDetailPage({ currentUser, journalId }) {
           </form>
 
           <div className="flex gap-2 mt-6">
-            <button
-              type="button"
-              onClick={() => alert('수정 기능은 준비 중입니다.')}
-              className="px-3 py-1 text-xs rounded-md border border-blue-200 text-blue-500 hover:bg-blue-50 transition"
+            {!isFriendMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => alert('수정 기능은 준비 중입니다.')}
+                  className="px-3 py-1 text-xs rounded-md border border-blue-200 text-blue-500 hover:bg-blue-50 transition"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm('정말 삭제하시겠습니까?')) return;
+                    await supabase.from('journals').delete().eq('id', journal.id);
+                    window.location.href = '/journal';
+                  }}
+                  className="px-3 py-1 text-xs rounded-md border border-red-200 text-red-400 hover:bg-red-50 transition"
+                >
+                  삭제
+                </button>
+              </>
+            )}
+            <a
+              href={isFriendMode ? `/friend/${friendId}/journal` : '/journal'}
+              className="px-3 py-1 text-xs rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 transition"
             >
-              수정
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!confirm('정말 삭제하시겠습니까?')) return;
-                await supabase.from('journals').delete().eq('id', journal.id);
-                window.location.href = '/journal';
-              }}
-              className="px-3 py-1 text-xs rounded-md border border-red-200 text-red-400 hover:bg-red-50 transition"
-            >
-              삭제
-            </button>
-            <a href="/journal" className="px-3 py-1 text-xs rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 transition">목록</a>
+              목록
+            </a>
           </div>
         </div>
       </div>

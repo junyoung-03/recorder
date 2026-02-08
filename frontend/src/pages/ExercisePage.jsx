@@ -75,7 +75,9 @@ const getRelativeDayLabel = (dateKey, baseDate) => {
   return formatKoreanDate(target);
 };
 
-function ExercisePage({ today, currentUser }) {
+function ExercisePage({ today, currentUser, friendId, friendMode }) {
+  const isFriendMode = Boolean(friendId) || Boolean(friendMode);
+  const targetUserId = isFriendMode ? friendId : currentUser?.id;
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [showBodyModal, setShowBodyModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -210,6 +212,7 @@ function ExercisePage({ today, currentUser }) {
   }, [bodyRecords]);
 
   React.useEffect(() => {
+    if (isFriendMode) return;
     if (urlParams.get('add') !== '1') return;
     const paramDate = urlParams.get('date');
     if (paramDate) {
@@ -225,13 +228,13 @@ function ExercisePage({ today, currentUser }) {
   }, [todayKey, urlParams]);
 
   useEffect(() => {
-    if (!currentUser?.id) return;
-    loadExerciseData(currentUser.id);
-  }, [currentUser?.id]);
+    if (!targetUserId) return;
+    loadExerciseData(targetUserId);
+  }, [targetUserId]);
 
   const handleAddExercise = async (event) => {
     event.preventDefault();
-    if (!currentUser?.id) return;
+    if (!currentUser?.id || isFriendMode) return;
     const formData = new FormData(event.target);
     const body_part = formData.get('body_part');
     const memo = formData.get('memo') || '';
@@ -252,13 +255,13 @@ function ExercisePage({ today, currentUser }) {
       return;
     }
     setShowExerciseModal(false);
-    loadExerciseData(currentUser.id);
+    loadExerciseData(targetUserId);
   };
 
 
   const handleAddBody = async (event) => {
     event.preventDefault();
-    if (!currentUser?.id) return;
+    if (!currentUser?.id || isFriendMode) return;
     const formData = new FormData(event.target);
     const dateValue = formData.get('date') || todayKey;
     const memo = formData.get('memo') || '';
@@ -288,20 +291,22 @@ function ExercisePage({ today, currentUser }) {
       return;
     }
     setShowBodyModal(false);
-    loadExerciseData(currentUser.id);
+    loadExerciseData(targetUserId);
   };
 
   const deleteExerciseRecord = async (recordId) => {
+    if (isFriendMode) return;
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const { error } = await supabase.from('exercise_records').delete().eq('id', recordId);
     if (error) {
       alert('오류가 발생했습니다.');
       return;
     }
-    loadExerciseData(currentUser?.id);
+    loadExerciseData(targetUserId);
   };
 
   const openEditExerciseModal = async (recordId) => {
+    if (isFriendMode) return;
     const local = recordCards.flatMap((card) => card.records).find((record) => record.id === recordId);
     if (local) {
       setEditRecord({ ...local });
@@ -323,7 +328,7 @@ function ExercisePage({ today, currentUser }) {
 
   const handleUpdateExercise = async (event) => {
     event.preventDefault();
-    if (!editRecord) return;
+    if (!editRecord || isFriendMode) return;
     const payload = {
       body_part: editRecord.body_part,
       date: editRecord.date,
@@ -338,17 +343,18 @@ function ExercisePage({ today, currentUser }) {
     }
     setShowEditModal(false);
     setEditRecord(null);
-    loadExerciseData(currentUser?.id);
+    loadExerciseData(targetUserId);
   };
 
   const deleteBodyRecord = async (recordId) => {
+    if (isFriendMode) return;
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const { error } = await supabase.from('body_records').delete().eq('id', recordId);
     if (error) {
       alert('오류가 발생했습니다.');
       return;
     }
-    loadExerciseData(currentUser?.id);
+    loadExerciseData(targetUserId);
   };
 
   const openAddExerciseForDate = (dateValue) => {
@@ -357,6 +363,7 @@ function ExercisePage({ today, currentUser }) {
     } else {
       setNewRecordDate(todayKey);
     }
+    if (isFriendMode) return;
     setShowExerciseModal(true);
   };
 
@@ -364,11 +371,15 @@ function ExercisePage({ today, currentUser }) {
     <div className="space-y-6">
       <PageHeader
         title="운동 · 몸 기록"
-        description="운동과 몸 변화를 같은 타임라인에 기록하고, 오늘의 변화를 확인하세요."
-        actions={[
-          { label: '+ 운동 기록', onClick: () => openAddExerciseForDate(todayKey), variant: 'primary' },
-          { label: '+ 몸 기록', onClick: () => setShowBodyModal(true), variant: 'secondary' },
-        ]}
+        description={isFriendMode ? '친구의 운동/몸 기록을 확인해 보세요.' : '운동과 몸 변화를 같은 타임라인에 기록하고, 오늘의 변화를 확인하세요.'}
+        actions={
+          isFriendMode
+            ? []
+            : [
+                { label: '+ 운동 기록', onClick: () => openAddExerciseForDate(todayKey), variant: 'primary' },
+                { label: '+ 몸 기록', onClick: () => setShowBodyModal(true), variant: 'secondary' },
+              ]
+        }
       />
 
 
@@ -408,14 +419,16 @@ function ExercisePage({ today, currentUser }) {
               </h2>
               <p className="text-sm text-gray-500 mt-1">최근 며칠 간의 운동 기록을 하루 단위로 확인해 보세요.</p>
             </div>
-            <div className="flex gap-2">
-              <a href={`/exercise/month?year=${new Date(today).getFullYear()}&month=${new Date(today).getMonth() + 1}`} className="btn-secondary px-4 py-2 text-sm font-semibold">
-                전체보기
-              </a>
-              <button onClick={() => openAddExerciseForDate(todayKey)} className="btn-primary px-4 py-2 text-white text-sm font-semibold">
-                + 운동 기록
-              </button>
-            </div>
+            {!isFriendMode && (
+              <div className="flex gap-2">
+                <a href={`/exercise/month?year=${new Date(today).getFullYear()}&month=${new Date(today).getMonth() + 1}`} className="btn-secondary px-4 py-2 text-sm font-semibold">
+                  전체보기
+                </a>
+                <button onClick={() => openAddExerciseForDate(todayKey)} className="btn-primary px-4 py-2 text-white text-sm font-semibold">
+                  + 운동 기록
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 items-start">
@@ -435,32 +448,36 @@ function ExercisePage({ today, currentUser }) {
                       <div className="text-xs text-gray-500 mt-1" style={{ whiteSpace: 'pre-line' }}>
                         {record.memo || '메모 없음'}
                       </div>
-                      <div className="flex gap-2 mt-2 justify-end">
-                        <button onClick={() => openEditExerciseModal(record.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#EFF6FF', color: '#2563EB' }}>수정</button>
-                        <button onClick={() => deleteExerciseRecord(record.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}>삭제</button>
-                      </div>
+                      {!isFriendMode && (
+                        <div className="flex gap-2 mt-2 justify-end">
+                          <button onClick={() => openEditExerciseModal(record.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#EFF6FF', color: '#2563EB' }}>수정</button>
+                          <button onClick={() => deleteExerciseRecord(record.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}>삭제</button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-sm text-gray-500">오늘 운동 기록이 없습니다.</div>
               )}
-              <button
-                type="button"
-                onClick={() => openAddExerciseForDate(todayKey)}
-                className="btn-primary px-4 py-2 text-white text-sm font-semibold mt-4"
-              >
-                + 운동 기록
-              </button>
+              {!isFriendMode && (
+                <button
+                  type="button"
+                  onClick={() => openAddExerciseForDate(todayKey)}
+                  className="btn-primary px-4 py-2 text-white text-sm font-semibold mt-4"
+                >
+                  + 운동 기록
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-3">
               {recentCards.map((card) => (
-                <button
+                <div
                   key={card.date}
-                  type="button"
-                  onClick={() => openAddExerciseForDate(card.date)}
-                  className="text-left border border-warm rounded-2xl p-4 bg-white hover:bg-warm-surface transition motion-card"
+                  className={`text-left border border-warm rounded-2xl p-4 bg-white transition motion-card ${
+                    isFriendMode ? '' : 'hover:bg-warm-surface'
+                  }`}
                 >
                   <div className="text-sm font-semibold">
                     {formatKoreanDate(card.dateKey || card.date)}
@@ -468,7 +485,7 @@ function ExercisePage({ today, currentUser }) {
                   <div className="text-xs text-gray-500 mt-1">
                     {card.records.length > 0 ? `운동 기록 ${card.records.length}개` : '운동 기록 없음'}
                   </div>
-                </button>
+                </div>
               ))}
               {recentCards.length === 0 && (
                 <div className="text-sm text-gray-500">최근 기록이 없습니다.</div>
@@ -530,15 +547,17 @@ function ExercisePage({ today, currentUser }) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h4l2-2h6l2 2h4v12H3V7z" />
                 <circle cx="12" cy="13" r="3.5" />
               </svg>
-              나의 몸 기록
+              {isFriendMode ? '친구의 몸 기록' : '나의 몸 기록'}
             </h2>
             <p className="text-sm text-gray-500 mt-1">몸무게와 사진을 함께 남기고, 시간을 두고 변화를 확인해 보세요.</p>
           </div>
           <div className="flex gap-2">
-            <a href="/exercise/body/all" className="btn-secondary px-4 py-2 text-sm font-semibold">전체보기</a>
-            <button onClick={() => setShowBodyModal(true)} className="btn-primary px-4 py-2 text-white text-sm font-semibold">
-              + 기록 추가
-            </button>
+            <a href={isFriendMode ? `/friend/${friendId}/body` : '/exercise/body/all'} className="btn-secondary px-4 py-2 text-sm font-semibold">전체보기</a>
+            {!isFriendMode && (
+              <button onClick={() => setShowBodyModal(true)} className="btn-primary px-4 py-2 text-white text-sm font-semibold">
+                + 기록 추가
+              </button>
+            )}
           </div>
         </div>
 
@@ -561,10 +580,14 @@ function ExercisePage({ today, currentUser }) {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center text-center py-16">
-              <p className="text-sm text-gray-500">몸 기록을 남겨두면, 몇 달 뒤에 큰 변화가 보일 거예요.</p>
-              <button onClick={() => setShowBodyModal(true)} className="btn-primary px-4 py-2 text-white text-sm font-semibold mt-4">
-                + 몸 기록 추가
-              </button>
+              <p className="text-sm text-gray-500">
+                {isFriendMode ? '친구가 아직 몸 기록을 남기지 않았어요.' : '몸 기록을 남겨두면, 몇 달 뒤에 큰 변화가 보일 거예요.'}
+              </p>
+              {!isFriendMode && (
+                <button onClick={() => setShowBodyModal(true)} className="btn-primary px-4 py-2 text-white text-sm font-semibold mt-4">
+                  + 몸 기록 추가
+                </button>
+              )}
             </div>
           )}
         </div>

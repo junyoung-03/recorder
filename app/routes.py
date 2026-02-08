@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from app import db
 from app.storage import save_image_to_storage, delete_image_from_storage
-from app.models import FinanceRecord, Schedule, ExercisePlan, ExerciseRecord, MealRecord, User, Journal, Friendship, Comment, Like, BodyRecord, Todo, JournalCategory
+from app.models import FinanceRecord, Schedule, ExercisePlan, ExerciseRecord, User, Journal, Friendship, Comment, Like, BodyRecord, Todo, JournalCategory
 from sqlalchemy import or_, and_
 from flask_login import login_user, logout_user, login_required, current_user
 
@@ -20,7 +20,6 @@ def react_assets(filename):
     dist_dir = Path(current_app.root_path).parent / 'static' / 'dist' / 'assets'
     return send_from_directory(dist_dir, filename)
 
-
 def get_current_user_payload():
     if current_user.is_authenticated:
         return {
@@ -30,7 +29,6 @@ def get_current_user_payload():
             'nickname': current_user.nickname
         }
     return {'isAuthenticated': False}
-
 
 def get_react_assets():
     manifest_path = Path(current_app.root_path).parent / 'static' / 'dist' / '.vite' / 'manifest.json'
@@ -49,7 +47,6 @@ def get_react_assets():
     css_files = entry.get('css', [])
     return js_files, css_files
 
-
 def render_react(page, props=None, active_path=None):
     js_files, css_files = get_react_assets()
     initial_data = {
@@ -59,7 +56,6 @@ def render_react(page, props=None, active_path=None):
         'activePath': active_path or request.path
     }
     return render_template('react_index.html', initial_data=initial_data, js_files=js_files, css_files=css_files)
-
 
 def serialize_calendar(calendar):
     serialized = []
@@ -73,7 +69,6 @@ def serialize_calendar(calendar):
         serialized.append(week_items)
     return serialized
 
-
 def get_holiday_dates(year):
     try:
         import holidays
@@ -82,14 +77,11 @@ def get_holiday_dates(year):
     except Exception:
         return set()
 
-
 def serialize_user(user):
     return {'id': user.id, 'username': user.username, 'nickname': user.nickname}
 
-
 def serialize_schedule(schedule):
     return schedule.to_dict()
-
 
 def serialize_todo(todo):
     return {
@@ -99,7 +91,6 @@ def serialize_todo(todo):
         'completed': todo.completed
     }
 
-
 def serialize_todo_cards(cards):
     return [
         {
@@ -108,7 +99,6 @@ def serialize_todo_cards(cards):
         }
         for card in cards
     ]
-
 
 def serialize_exercise_record(record):
     return {
@@ -120,7 +110,6 @@ def serialize_exercise_record(record):
         'memo': record.memo
     }
 
-
 def serialize_exercise_cards(cards):
     return [
         {
@@ -129,7 +118,6 @@ def serialize_exercise_cards(cards):
         }
         for card in cards
     ]
-
 
 def serialize_body_record(record):
     image_url = record.image_path if record.image_path and record.image_path.startswith('http') else None
@@ -141,38 +129,6 @@ def serialize_body_record(record):
         'memo': record.memo
     }
 
-
-def serialize_meal_comment(comment, can_delete):
-    return {
-        'id': comment.id,
-        'content': comment.content,
-        'user': serialize_user(comment.user),
-        'canDelete': can_delete
-    }
-
-
-def serialize_meal(meal, liked=False, can_delete_comment_ids=None):
-    can_delete_comment_ids = can_delete_comment_ids or set()
-    image_url = meal.image_path if meal.image_path and meal.image_path.startswith('http') else None
-    return {
-        'id': meal.id,
-        'date': meal.date.isoformat(),
-        'meal_type': meal.meal_type,
-        'food_name': meal.food_name,
-        'calories': meal.calories,
-        'image_path': meal.image_path,
-        'imageUrl': image_url,
-        'memo': meal.memo,
-        'visibility': meal.visibility,
-        'likes': [like.id for like in meal.likes],
-        'comments': [
-            serialize_meal_comment(comment, comment.id in can_delete_comment_ids)
-            for comment in sorted(meal.comments, key=lambda c: c.created_at)
-        ],
-        'liked': liked
-    }
-
-
 def serialize_journal_comment(comment, can_delete):
     return {
         'id': comment.id,
@@ -180,7 +136,6 @@ def serialize_journal_comment(comment, can_delete):
         'user': serialize_user(comment.user),
         'canDelete': can_delete
     }
-
 
 def serialize_journal(journal, can_delete_comment_ids=None):
     can_delete_comment_ids = can_delete_comment_ids or set()
@@ -198,13 +153,11 @@ def serialize_journal(journal, can_delete_comment_ids=None):
         ]
     }
 
-
 def serialize_journal_category(category):
     return {
         'id': category.id,
         'name': category.name
     }
-
 
 def ensure_default_journal_categories(user_id):
     categories = JournalCategory.query.filter(
@@ -214,7 +167,6 @@ def ensure_default_journal_categories(user_id):
         return categories
     # No auto-created defaults; uncategorized handled in UI.
     return categories
-
 
 def build_journal_category_counts(journals):
     counts = {}
@@ -257,7 +209,6 @@ def build_todo_cards(user_id, base_date, limit=4):
         cards.append({'date': target_date, 'todos': grouped.get(target_date, [])})
 
     return cards
-
 
 def build_exercise_cards(user_id, base_date):
     """운동 기록 카드 데이터 생성 (오늘 + 최근 3일)"""
@@ -350,7 +301,6 @@ def get_calendar_data(year, month, finance_data, holiday_dates=None):
     
     return calendar
 
-
 # ===== Auth =====
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -371,7 +321,6 @@ def login():
         error = '아이디 또는 비밀번호가 올바르지 않습니다.'
 
     return render_react('login', {'error': error}, active_path='/login')
-
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
@@ -401,7 +350,6 @@ def register():
 
     return render_react('register', {'error': error}, active_path='/register')
 
-
 @bp.route('/logout')
 @login_required
 def logout():
@@ -414,7 +362,6 @@ def landing():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
     return render_react('landing', active_path='/')
-
 
 @bp.route('/dashboard')
 @login_required
@@ -512,7 +459,6 @@ def dashboard():
         'todaySchedules': [serialize_schedule(schedule) for schedule in today_schedules],
         'todayTodos': [serialize_todo(todo) for todo in today_todos]
     }, active_path='/')
-
 
 @bp.route('/account')
 @login_required
@@ -683,7 +629,6 @@ def finance():
         'viewMode': view_mode
     }, active_path='/finance')
 
-
 @bp.route('/finance/records')
 @login_required
 def finance_records():
@@ -740,7 +685,6 @@ def finance_records():
         'income_count': income_count,
         'expense_count': expense_count
     })
-
 
 @bp.route('/finance/month')
 @login_required
@@ -860,7 +804,6 @@ def update_finance(record_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
-
 
 @bp.route('/finance/detail/<int:record_id>')
 @login_required
@@ -1110,7 +1053,6 @@ def schedule_detail(schedule_id):
     ).first_or_404()
     return jsonify(schedule.to_dict())
 
-
 # ===== Todos =====
 @bp.route('/todos/month')
 @login_required
@@ -1156,7 +1098,6 @@ def todos_month():
         'cards': serialize_todo_cards(cards)
     }, active_path='/schedule')
 
-
 @bp.route('/todos/add', methods=['POST'])
 @login_required
 def add_todo():
@@ -1179,7 +1120,6 @@ def add_todo():
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
 
-
 @bp.route('/todos/toggle/<int:todo_id>', methods=['POST'])
 @login_required
 def toggle_todo(todo_id):
@@ -1191,7 +1131,6 @@ def toggle_todo(todo_id):
     todo.completed = not todo.completed
     db.session.commit()
     return jsonify({'success': True})
-
 
 @bp.route('/todos/delete/<int:todo_id>', methods=['DELETE'])
 @login_required
@@ -1211,57 +1150,14 @@ def delete_todo(todo_id):
 
 # 파일 업로드 설정
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-MEAL_UPLOAD_FOLDER = Path(__file__).parent.parent / 'static' / 'uploads' / 'meals'
 BODY_UPLOAD_FOLDER = Path(__file__).parent.parent / 'static' / 'uploads' / 'body'
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def can_view_meal(meal: MealRecord) -> bool:
-    if meal.user_id == current_user.id:
-        return True
-    if meal.visibility == 'public':
-        return True
-    if meal.visibility == 'friends':
-        return is_friend(current_user.id, meal.user_id)
-    return False
-
-def can_view_journal(journal: Journal) -> bool:
-    if journal.user_id == current_user.id:
-        return True
-    if journal.visibility == 'public':
-        return True
-    if journal.visibility == 'friends':
-        return is_friend(current_user.id, journal.user_id)
-    return False
-
-def get_friend_ids(user_id: int):
-    """친구 목록 (accepted)"""
-    relationships = Friendship.query.filter(
-        or_(
-            and_(Friendship.user_id == user_id, Friendship.status == 'accepted'),
-            and_(Friendship.friend_id == user_id, Friendship.status == 'accepted')
-        )
-    ).all()
-
-    friend_ids = set()
-    for rel in relationships:
-        if rel.user_id == user_id:
-            friend_ids.add(rel.friend_id)
-        else:
-            friend_ids.add(rel.user_id)
-    return list(friend_ids)
-
-
-def is_friend(user_id: int, target_id: int) -> bool:
-    """친구 관계 여부"""
-    return target_id in get_friend_ids(user_id)
-
-
 def can_view_friend_content(friend_id: int) -> bool:
     """친구 전용 화면 접근 권한"""
     return is_friend(current_user.id, friend_id)
-
 
 def ensure_friend_access(friend_id: int) -> None:
 
@@ -1270,7 +1166,6 @@ def ensure_friend_access(friend_id: int) -> None:
     if not can_view_friend_content(friend_id):
         abort(403)
 
-
 def get_friends_list(user_id: int):
     """친구 목록 상세"""
     friend_ids = get_friend_ids(user_id)
@@ -1278,34 +1173,7 @@ def get_friends_list(user_id: int):
         return []
     return User.query.filter(User.id.in_(friend_ids)).order_by(User.nickname.asc(), User.username.asc()).all()
 
-# ===== Meals (Social) =====
-@bp.route('/meals')
-@login_required
-def meals():
-    """식단 페이지"""
-    return redirect(url_for('main.exercise'))
-
-
 # ===== Media Access =====
-@bp.route('/media/meals/<int:meal_id>')
-@login_required
-def meal_image(meal_id):
-    """식단 이미지 접근 (권한 체크)"""
-    meal = MealRecord.query.filter(
-        MealRecord.id == meal_id
-    ).first_or_404()
-    if not can_view_meal(meal):
-        return ('', 403)
-    if not meal.image_path:
-        return ('', 404)
-    if meal.image_path.startswith('http'):
-        return redirect(meal.image_path)
-    image_file = Path(__file__).parent.parent / 'static' / meal.image_path
-    if not image_file.exists():
-        return ('', 404)
-    return send_from_directory(str(image_file.parent), image_file.name)
-
-
 @bp.route('/media/body/<int:record_id>')
 @login_required
 def body_image(record_id):
@@ -1322,59 +1190,6 @@ def body_image(record_id):
     if not image_file.exists():
         return ('', 404)
     return send_from_directory(str(image_file.parent), image_file.name)
-
-
-@bp.route('/meals/<int:meal_id>/like', methods=['POST'])
-@login_required
-def toggle_meal_like(meal_id):
-    """식단 좋아요 토글"""
-    meal = MealRecord.query.filter(MealRecord.id == meal_id).first_or_404()
-    if not can_view_meal(meal):
-        return ('', 403)
-    existing = Like.query.filter(
-        Like.user_id == current_user.id,
-        Like.meal_id == meal_id
-    ).first()
-    if existing:
-        db.session.delete(existing)
-    else:
-        db.session.add(Like(user_id=current_user.id, meal_id=meal_id))
-    db.session.commit()
-    next_url = request.form.get('next') or request.referrer or url_for('main.meals')
-    return redirect(next_url)
-
-
-@bp.route('/meals/<int:meal_id>/comment', methods=['POST'])
-@login_required
-def add_meal_comment(meal_id):
-    """식단 댓글 추가"""
-    meal = MealRecord.query.filter(MealRecord.id == meal_id).first_or_404()
-    if not can_view_meal(meal):
-        return ('', 403)
-    content = request.form.get('content', '').strip()
-    if content:
-        db.session.add(Comment(user_id=current_user.id, meal_id=meal_id, content=content))
-        db.session.commit()
-    next_url = request.form.get('next') or request.referrer or url_for('main.meals')
-    return redirect(next_url)
-
-
-@bp.route('/meals/comments/<int:comment_id>/delete', methods=['POST'])
-@login_required
-def delete_meal_comment(comment_id):
-    """식단 댓글 삭제"""
-    comment = Comment.query.filter(
-        Comment.id == comment_id,
-        Comment.meal_id.isnot(None)
-    ).first_or_404()
-    meal = MealRecord.query.filter(MealRecord.id == comment.meal_id).first_or_404()
-    if comment.user_id != current_user.id and meal.user_id != current_user.id:
-        return ('', 403)
-    db.session.delete(comment)
-    db.session.commit()
-    next_url = request.form.get('next') or request.referrer or url_for('main.meals')
-    return redirect(next_url)
-
 
 # ===== Journal (Social) =====
 @bp.route('/journal')
@@ -1394,7 +1209,6 @@ def journal_list():
         'categories': [serialize_journal_category(category) for category in categories],
         'categoryCounts': category_counts
     }, active_path='/journal')
-
 
 @bp.route('/journal/new', methods=['GET', 'POST'])
 @login_required
@@ -1433,7 +1247,6 @@ def journal_new():
         'categories': [serialize_journal_category(category) for category in categories]
     }, active_path='/journal')
 
-
 @bp.route('/journal/<int:journal_id>')
 @login_required
 def journal_detail(journal_id):
@@ -1466,7 +1279,6 @@ def journal_detail(journal_id):
         'categoryCounts': category_counts
     }, active_path='/journal')
 
-
 @bp.route('/journal/categories', methods=['GET', 'POST'])
 @login_required
 def journal_categories():
@@ -1492,7 +1304,6 @@ def journal_categories():
     db.session.commit()
     return jsonify({'category': serialize_journal_category(category)}), 201
 
-
 @bp.route('/journal/categories/<int:category_id>', methods=['DELETE'])
 @login_required
 def journal_category_delete(category_id):
@@ -1504,7 +1315,6 @@ def journal_category_delete(category_id):
     db.session.delete(category)
     db.session.commit()
     return jsonify({'ok': True})
-
 
 @bp.route('/journal/<int:journal_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -1545,7 +1355,6 @@ def journal_edit(journal_id):
         'categories': [serialize_journal_category(category) for category in categories]
     }, active_path='/journal')
 
-
 @bp.route('/journal/<int:journal_id>/delete', methods=['POST'])
 @login_required
 def journal_delete(journal_id):
@@ -1557,7 +1366,6 @@ def journal_delete(journal_id):
     db.session.delete(journal)
     db.session.commit()
     return redirect(url_for('main.journal_list'))
-
 
 @bp.route('/journal/<int:journal_id>/like', methods=['POST'])
 @login_required
@@ -1578,7 +1386,6 @@ def toggle_journal_like(journal_id):
     next_url = request.form.get('next') or request.referrer or url_for('main.journal_list')
     return redirect(next_url)
 
-
 @bp.route('/journal/<int:journal_id>/comment', methods=['POST'])
 @login_required
 def add_journal_comment(journal_id):
@@ -1592,7 +1399,6 @@ def add_journal_comment(journal_id):
         db.session.commit()
     next_url = request.form.get('next') or request.referrer or url_for('main.journal_list')
     return redirect(next_url)
-
 
 @bp.route('/journal/comments/<int:comment_id>/delete', methods=['POST'])
 @login_required
@@ -1609,7 +1415,6 @@ def delete_journal_comment(comment_id):
     db.session.commit()
     next_url = request.form.get('next') or request.referrer or url_for('main.journal_list')
     return redirect(next_url)
-
 
 # ===== Friends =====
 @bp.route('/friends')
@@ -1647,7 +1452,6 @@ def friends():
         ]
     }, active_path='/friends')
 
-
 @bp.route('/friends/request', methods=['POST'])
 @login_required
 def send_friend_request():
@@ -1677,7 +1481,6 @@ def send_friend_request():
     db.session.commit()
     return redirect(url_for('main.friends'))
 
-
 @bp.route('/friends/accept/<int:request_id>', methods=['POST'])
 @login_required
 def accept_friend_request(request_id):
@@ -1690,7 +1493,6 @@ def accept_friend_request(request_id):
     request_row.status = 'accepted'
     db.session.commit()
     return redirect(url_for('main.friends'))
-
 
 @bp.route('/friends/remove/<int:user_id>', methods=['POST'])
 @login_required
@@ -1706,45 +1508,6 @@ def remove_friend(user_id):
         db.session.delete(rel)
     db.session.commit()
     return redirect(url_for('main.friends'))
-
-
-@bp.route('/friend/<int:friend_id>/meals')
-@login_required
-def friend_meals(friend_id):
-    """친구 식단 뷰어"""
-    ensure_friend_access(friend_id)
-    friend_user = User.query.filter(User.id == friend_id).first_or_404()
-    meals = MealRecord.query.filter(
-        MealRecord.user_id == friend_id,
-        MealRecord.visibility.in_(['friends', 'public'])
-    ).order_by(MealRecord.date.desc(), MealRecord.created_at.desc()).all()
-    friends_list = get_friends_list(current_user.id)
-    meal_ids = [meal.id for meal in meals]
-    liked_meal_ids = set()
-    if meal_ids:
-        liked_meal_ids = set(
-            like.meal_id for like in Like.query.filter(
-                Like.user_id == current_user.id,
-                Like.meal_id.in_(meal_ids)
-            ).all()
-        )
-    serialized_meals = []
-    for meal in meals:
-        can_delete_comment_ids = {
-            comment.id for comment in meal.comments if comment.user_id == current_user.id
-        }
-        serialized_meals.append(serialize_meal(
-            meal,
-            liked=meal.id in liked_meal_ids,
-            can_delete_comment_ids=can_delete_comment_ids
-        ))
-    return render_react('friendMeals', {
-        'friendUser': serialize_user(friend_user),
-        'meals': serialized_meals,
-        'friendsList': [serialize_user(friend) for friend in friends_list],
-        'likedMealIds': list(liked_meal_ids)
-    }, active_path='/meals')
-
 
 @bp.route('/friend/<int:friend_id>/journal')
 @login_required
@@ -1796,38 +1559,10 @@ def exercise():
         BodyRecord.user_id == current_user.id
     ).order_by(BodyRecord.date.desc(), BodyRecord.created_at.desc()).all()
 
-    today_meals = MealRecord.query.filter(
-        MealRecord.user_id == current_user.id,
-        MealRecord.date == today
-    ).order_by(MealRecord.created_at).all()
-    meal_ids = [meal.id for meal in today_meals]
-    liked_meal_ids = set()
-    if meal_ids:
-        liked_meal_ids = set(
-            like.meal_id for like in Like.query.filter(
-                Like.user_id == current_user.id,
-                Like.meal_id.in_(meal_ids)
-            ).all()
-        )
-    serialized_meals = []
-    for meal in today_meals:
-        can_delete_comment_ids = {
-            comment.id
-            for comment in meal.comments
-            if comment.user_id == current_user.id or meal.user_id == current_user.id
-        }
-        serialized_meals.append(serialize_meal(
-            meal,
-            liked=meal.id in liked_meal_ids,
-            can_delete_comment_ids=can_delete_comment_ids
-        ))
-
     return render_react('exercise', {
         'today': today.isoformat(),
         'recordCards': serialize_exercise_cards(record_cards),
         'bodyRecords': [serialize_body_record(record) for record in body_records],
-        'todayMeals': serialized_meals,
-        'likedMealIds': list(liked_meal_ids)
     }, active_path='/exercise')
 
 @bp.route('/exercise/plan', methods=['POST'])
@@ -1908,7 +1643,6 @@ def delete_exercise_record(record_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
 
-
 @bp.route('/exercise/month')
 @login_required
 def exercise_month():
@@ -1960,7 +1694,6 @@ def exercise_month():
         'cards': serialized_cards
     }, active_path='/exercise')
 
-
 @bp.route('/exercise/record/detail/<int:record_id>')
 @login_required
 def exercise_record_detail(record_id):
@@ -1977,7 +1710,6 @@ def exercise_record_detail(record_id):
         'weight_kg': record.weight_kg,
         'memo': record.memo or ''
     })
-
 
 @bp.route('/exercise/record/<int:record_id>', methods=['PUT'])
 @login_required
@@ -2002,63 +1734,6 @@ def update_exercise_record(record_id):
         record.exercise_name = record.memo or record.body_part
         db.session.commit()
         return jsonify({'success': True, 'message': '운동 기록이 수정되었습니다.'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 400
-
-@bp.route('/meals/add', methods=['POST'])
-@login_required
-def add_meal_record():
-    """식단 기록 추가"""
-    try:
-        meal_date = request.form.get('date', date.today().isoformat())
-        meal_type = request.form.get('meal_type', '')
-        food_name = request.form.get('food_name', '')
-        calories = int(request.form.get('calories', 0)) if request.form.get('calories') else None
-        memo = request.form.get('memo', '')
-        
-        # 파일 업로드 처리
-        image_path = None
-        if 'image' in request.files:
-            file = request.files['image']
-            if file and file.filename and allowed_file(file.filename):
-                image_path = save_image_to_storage(file, current_user.id, 'meals', meal_date)
-        
-        visibility = request.form.get('visibility', 'private')
-        meal = MealRecord(
-            user_id=current_user.id,
-            date=datetime.strptime(meal_date, '%Y-%m-%d').date(),
-            meal_type=meal_type,
-            food_name=food_name,
-            calories=calories,
-            image_path=image_path,
-            memo=memo,
-            visibility=visibility
-        )
-        
-        db.session.add(meal)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': '식단 기록이 추가되었습니다.'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 400
-
-@bp.route('/meals/delete/<int:meal_id>', methods=['DELETE'])
-@login_required
-def delete_meal_record(meal_id):
-    """식단 기록 삭제"""
-    try:
-        meal = MealRecord.query.filter(
-            MealRecord.id == meal_id,
-            MealRecord.user_id == current_user.id
-        ).first_or_404()
-        # 이미지 파일 삭제
-        if meal.image_path:
-            delete_image_from_storage(meal.image_path)
-        db.session.delete(meal)
-        db.session.commit()
-        return jsonify({'success': True, 'message': '식단 기록이 삭제되었습니다.'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
@@ -2090,7 +1765,6 @@ def add_body_record():
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
 
-
 @bp.route('/exercise/body/<int:record_id>', methods=['DELETE'])
 @login_required
 def delete_body_record(record_id):
@@ -2108,10 +1782,4 @@ def delete_body_record(record_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
-
-@bp.route('/uploads/meals/<filename>')
-@login_required
-def uploaded_meal_image(filename):
-    """업로드된 식단 이미지 제공"""
-    return send_from_directory(str(MEAL_UPLOAD_FOLDER), filename)
 

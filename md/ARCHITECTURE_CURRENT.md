@@ -1,11 +1,9 @@
-# Recorder 시스템 아키텍처 (현재 코드 기준)
+# Recorder 시스템 아키텍처 (현재 상태 요약)
 
 ## 1. 프로젝트 개요
 
 **Recorder(리코더)**는 개인 생활 기록(가계부, 일정, 운동, 몸 기록, 일기)을 날짜 중심으로 관리하고,  
-일기는 **친구 권한을 가진 사용자에게만** 공유 가능한 웹 서비스다.
-
-현재 코드 기준으로 작성했으며, 운영 확장 계획은 마지막 섹션에 별도 정리한다.
+친구 관계를 통해 **운동/몸/일기 공유 뷰**를 제공하는 웹 서비스다.
 
 ---
 
@@ -55,7 +53,7 @@ Auth Session       Postgres (RLS)     Storage (Images)
 | Domain | 설명 |
 |---|---|
 | Auth | 로그인/회원가입 |
-| Friends | 친구 요청/수락/차단 |
+| Friends | 친구 요청/수락 |
 | Private | 개인 전용 데이터 |
 | Social | 친구 공유 데이터 |
 | Media Access | 스토리지 접근 제어 |
@@ -74,6 +72,7 @@ Auth Session       Postgres (RLS)     Storage (Images)
 ### 5.3 Social Domain (Friends-only)
 **포함**
 - 일기
+- 운동/몸 공유 뷰 (friend 모드)
 
 **보안**
 - 친구 관계는 상호 승인
@@ -182,12 +181,3 @@ Auth Session       Postgres (RLS)     Storage (Images)
 Recorder는 Supabase Auth/RLS/Storage로 권한과 데이터를 관리하고,  
 프론트엔드에서 직접 DB/스토리지를 접근하는  
 서버리스 구조의 생활 기록 웹 서비스다.
-
----
-
-## 12. 확장/권장 사항 (운영)
-- RLS 정책 테스트/감사 자동화
-- Edge Function 도입(대량 Export, 서명 URL)
-- Storage signed URL 사용 범위 확대
-
-

@@ -70,16 +70,11 @@ auth.uid() = user_id
 ### 4.3 Social Domain (Friends-only + Public)
 - 친구 관계: `friendships` (pending/accepted/blocked)
 - 친구 뷰어:
-  - `/friend/<id>/meals`
   - `/friend/<id>/journal`
-- 식단/일기 공개 범위:
-  - `meal_records.visibility` (private/friends/public)
   - `journals.visibility` (private/friends/public)
 - 댓글/좋아요:
-  - `comments`, `likes`는 `meal_id`/`journal_id` 기준 접근 제어
 
 ### 4.4 Media Access (이미지)
-- `/media/meals/<meal_id>`
 - `/media/body/<record_id>`
 - 서버 권한 검사 후 로컬 파일 제공 또는 URL 리다이렉트
 
@@ -87,7 +82,6 @@ auth.uid() = user_id
 - users, friendships
 - finance_records, schedules, todos
 - exercise_plans, exercise_records, body_records
-- meal_records, journals, journal_categories
 - comments, likes
 
 ---
@@ -104,7 +98,6 @@ auth.uid() = user_id
 - 서버 API는 Edge Function 필요 시에만 추가
 
 ### 5.3 Storage 전환
-- 이미지(식단/몸 기록)는 Supabase Storage bucket 사용
 - 파일 접근은 Storage RLS로 제어
 - 기존 `/media/*` 라우트 제거
 
@@ -124,7 +117,6 @@ auth.uid() = user_id
 - select: `auth.uid() IN (user_id, friend_id)`
 - delete: `auth.uid() IN (user_id, friend_id)`
 
-### 6.3 Social Domain (Meals/Journals)
 공개 범위 규칙:
 - private: 작성자만
 - friends: 작성자 + 친구
@@ -142,8 +134,6 @@ auth.uid() = user_id
       FROM friendships f
       WHERE f.status = 'accepted'
         AND (
-          (f.user_id = auth.uid() AND f.friend_id = meal_records.user_id)
-          OR (f.friend_id = auth.uid() AND f.user_id = meal_records.user_id)
         )
     )
   )
@@ -163,7 +153,6 @@ auth.uid() = user_id
 - `fetch('/schedule/...')` → `supabase.from('schedules')`
 - `fetch('/todos/...')` → `supabase.from('todos')`
 - `fetch('/exercise/...')` → `supabase.from('exercise_records')`, `exercise_plans`, `body_records`
-- `fetch('/journal/...')`, `fetch('/meals/...')` → 해당 테이블 접근
 
 ### 7.2 세션/유저 상태
 - `currentUser`는 Supabase auth session에서 주입
@@ -196,7 +185,6 @@ ALTER TABLE public.todos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exercise_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exercise_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.body_records ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.meal_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.journals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.journal_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
@@ -273,9 +261,7 @@ CREATE POLICY "friendships_delete" ON public.friendships
   FOR DELETE USING (auth.uid() IN (user_id, friend_id));
 ```
 
-### 9.4 Social Domain (Meals / Journals)
 ```sql
-CREATE POLICY "meal_select" ON public.meal_records
   FOR SELECT USING (
     user_id = auth.uid()
     OR visibility = 'public'
@@ -285,17 +271,12 @@ CREATE POLICY "meal_select" ON public.meal_records
         SELECT 1 FROM public.friendships f
         WHERE f.status = 'accepted'
           AND (
-            (f.user_id = auth.uid() AND f.friend_id = meal_records.user_id)
-            OR (f.friend_id = auth.uid() AND f.user_id = meal_records.user_id)
           )
       )
     )
   );
-CREATE POLICY "meal_insert" ON public.meal_records
   FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "meal_update" ON public.meal_records
   FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "meal_delete" ON public.meal_records
   FOR DELETE USING (auth.uid() = user_id);
 
 CREATE POLICY "journal_select" ON public.journals
@@ -339,8 +320,6 @@ CREATE POLICY "journal_categories_delete" ON public.journal_categories
 CREATE POLICY "comment_select" ON public.comments
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM public.meal_records m
-      WHERE m.id = comments.meal_id
       AND (
         m.user_id = auth.uid()
         OR m.visibility = 'public'
@@ -385,8 +364,6 @@ CREATE POLICY "comment_delete" ON public.comments
   FOR DELETE USING (
     auth.uid() = user_id
     OR EXISTS (
-      SELECT 1 FROM public.meal_records m
-      WHERE m.id = comments.meal_id AND m.user_id = auth.uid()
     )
     OR EXISTS (
       SELECT 1 FROM public.journals j
@@ -409,27 +386,21 @@ CREATE POLICY "like_delete" ON public.likes
 ## 10. Storage 정책 (Supabase Storage)
 
 ### 10.1 버킷 구성
-- `meals` : 식단 이미지
 - `body` : 몸 기록 이미지
 - (옵션) `journals` : 일기 첨부 이미지
 
 ### 10.2 객체 경로 규칙
-- `meals/{user_id}/{filename}`
 - `body/{user_id}/{filename}`
 
 ### 10.3 Storage RLS 정책 예시
 ```sql
-CREATE POLICY "meals_read" ON storage.objects
   FOR SELECT USING (
-    bucket_id = 'meals'
     AND (
       (auth.uid()::text = (storage.foldername(name))[1])
     )
   );
 
-CREATE POLICY "meals_write" ON storage.objects
   FOR INSERT WITH CHECK (
-    bucket_id = 'meals'
     AND (auth.uid()::text = (storage.foldername(name))[1])
   );
 
@@ -456,7 +427,6 @@ CREATE INDEX IF NOT EXISTS idx_schedule_user_date ON public.schedules (user_id, 
 CREATE INDEX IF NOT EXISTS idx_todos_user_date ON public.todos (user_id, date);
 CREATE INDEX IF NOT EXISTS idx_exercise_user_date ON public.exercise_records (user_id, date);
 CREATE INDEX IF NOT EXISTS idx_body_user_date ON public.body_records (user_id, date);
-CREATE INDEX IF NOT EXISTS idx_meal_user_date ON public.meal_records (user_id, date);
 CREATE INDEX IF NOT EXISTS idx_journal_user_date ON public.journals (user_id, date);
 CREATE INDEX IF NOT EXISTS idx_friendship_user_friend ON public.friendships (user_id, friend_id);
 CREATE INDEX IF NOT EXISTS idx_friendship_friend_user ON public.friendships (friend_id, user_id);
@@ -564,11 +534,9 @@ CREATE TABLE IF NOT EXISTS public.body_records (
   created_at timestamp with time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.meal_records (
   id bigserial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   date date NOT NULL,
-  meal_type text,
   food_name text,
   calories integer,
   image_path text,
@@ -600,7 +568,6 @@ CREATE TABLE IF NOT EXISTS public.journal_categories (
 CREATE TABLE IF NOT EXISTS public.comments (
   id bigserial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  meal_id bigint REFERENCES public.meal_records(id) ON DELETE CASCADE,
   journal_id bigint REFERENCES public.journals(id) ON DELETE CASCADE,
   content text NOT NULL,
   created_at timestamp with time zone DEFAULT now()
@@ -609,10 +576,8 @@ CREATE TABLE IF NOT EXISTS public.comments (
 CREATE TABLE IF NOT EXISTS public.likes (
   id bigserial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  meal_id bigint REFERENCES public.meal_records(id) ON DELETE CASCADE,
   journal_id bigint REFERENCES public.journals(id) ON DELETE CASCADE,
   created_at timestamp with time zone DEFAULT now(),
-  UNIQUE (user_id, meal_id),
   UNIQUE (user_id, journal_id)
 );
 ```

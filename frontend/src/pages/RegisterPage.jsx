@@ -13,7 +13,8 @@ function RegisterPage() {
   const [otpVerified, setOtpVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // 비밀번호 유효성 검사
   const passwordChecks = {
@@ -51,13 +52,13 @@ function RegisterPage() {
       setError('이미 가입된 이메일 입니다.');
       return;
     }
-    setLoading(true);
+    setOtpLoading(true);
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: trimmedEmail,
       // NOTE: emailRedirectTo가 없으면 OTP 코드 방식으로 발송됨
       options: { shouldCreateUser: true },
     });
-    setLoading(false);
+    setOtpLoading(false);
     if (otpError) {
       setError('인증코드 전송에 실패했습니다.');
       return;
@@ -110,75 +111,74 @@ function RegisterPage() {
       return;
     }
     setError(null);
-    setLoading(true);
+    setSubmitting(true);
     const trimmedEmail = email.trim();
-    const { data: sessionInfo } = await supabase.auth.getSession();
-    if (!sessionInfo?.session) {
-      const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-        email: trimmedEmail,
-        token: otpCode.trim(),
-        type: 'email',
-      });
-      if (verifyError || !verifyData?.session) {
-        setLoading(false);
-        setError('인증 세션이 만료되었습니다. 인증코드를 다시 확인해주세요.');
-        return;
-      }
-    }
-    const { error: updateError } = await supabase.auth.updateUser({
-      password,
-      data: {
-        username: username.trim(),
-        nickname: nickname.trim() || null,
-        birth_date: birthDate || null,
-      },
-    });
-    if (updateError) {
-      const message = updateError.message || '';
-      if (!message.includes('New password should be different from the old password')) {
-        setLoading(false);
-        setError(`회원 정보 저장에 실패했습니다. ${message}`.trim());
-        return;
-      }
-    }
-    const { data: sessionData } = await supabase.auth.getUser();
-    if (sessionData?.user?.id) {
-      const baseProfile = {
-        id: sessionData.user.id,
-        username: username.trim(),
-        nickname: nickname.trim() || null,
-        email: trimmedEmail,
-      };
-      const { error: profileError } = await supabase.from('users').upsert(
-        [
-          {
-            ...baseProfile,
-            birth_date: birthDate || null,
-          },
-        ],
-        { onConflict: 'id' },
-      );
-      if (profileError) {
-        const message = profileError.message || '';
-        if (message.includes('birth_date') && message.includes('schema cache')) {
-          const { error: retryError } = await supabase.from('users').upsert(
-            [baseProfile],
-            { onConflict: 'id' },
-          );
-          if (retryError) {
-            setLoading(false);
-            setError('프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-            return;
-          }
-        } else {
-          setLoading(false);
-          setError('프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    try {
+      const { data: sessionInfo } = await supabase.auth.getSession();
+      if (!sessionInfo?.session) {
+        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+          email: trimmedEmail,
+          token: otpCode.trim(),
+          type: 'email',
+        });
+        if (verifyError || !verifyData?.session) {
+          setError('인증 세션이 만료되었습니다. 인증코드를 다시 확인해주세요.');
           return;
         }
       }
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+        data: {
+          username: username.trim(),
+          nickname: nickname.trim() || null,
+          birth_date: birthDate || null,
+        },
+      });
+      if (updateError) {
+        const message = updateError.message || '';
+        if (!message.includes('New password should be different from the old password')) {
+          setError(`회원 정보 저장에 실패했습니다. ${message}`.trim());
+          return;
+        }
+      }
+      const { data: sessionData } = await supabase.auth.getUser();
+      if (sessionData?.user?.id) {
+        const baseProfile = {
+          id: sessionData.user.id,
+          username: username.trim(),
+          nickname: nickname.trim() || null,
+          email: trimmedEmail,
+        };
+        const { error: profileError } = await supabase.from('users').upsert(
+          [
+            {
+              ...baseProfile,
+              birth_date: birthDate || null,
+            },
+          ],
+          { onConflict: 'id' },
+        );
+        if (profileError) {
+          const message = profileError.message || '';
+          if (message.includes('birth_date') && message.includes('schema cache')) {
+            const { error: retryError } = await supabase.from('users').upsert(
+              [baseProfile],
+              { onConflict: 'id' },
+            );
+            if (retryError) {
+              setError('프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+              return;
+            }
+          } else {
+            setError('프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+            return;
+          }
+        }
+      }
+      window.location.href = '/dashboard';
+    } finally {
+      setSubmitting(false);
     }
-    setLoading(false);
-    window.location.href = '/dashboard';
   };
 
   return (
@@ -212,9 +212,9 @@ function RegisterPage() {
               className={`px-3 py-2 text-sm font-semibold whitespace-nowrap rounded-full border transition ${
                 otpSent ? 'bg-blue-50 border-blue-200 text-blue-600' : 'btn-secondary'
               }`}
-              disabled={loading}
+              disabled={otpLoading || submitting}
             >
-              {loading ? '전송 중...' : (otpSent ? '재전송' : '전송')}
+              {otpLoading ? '전송 중...' : (otpSent ? '재전송' : '전송')}
             </button>
           </div>
         </div>
@@ -351,14 +351,14 @@ function RegisterPage() {
         </div>
         <button
           type="submit"
-          disabled={!isPasswordValid || !isPasswordMatch || loading}
+          disabled={!isPasswordValid || !isPasswordMatch || submitting}
           className={`w-full py-2 rounded-md font-medium transition ${
-            isPasswordValid && isPasswordMatch && !loading
+            isPasswordValid && isPasswordMatch && !submitting
               ? 'btn-primary'
               : 'bg-gray-300 text-gray-500 cursor-not-allowed'
           }`}
         >
-          {loading ? '가입 중...' : '회원가입'}
+          {submitting ? '가입 중...' : '회원가입'}
         </button>
       </form>
       <p className="text-sm text-center mt-4" style={{ color: '#6B7280' }}>

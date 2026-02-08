@@ -22,7 +22,9 @@ const extractStoragePath = (value, bucket) => {
   }
 };
 
-function BodyRecordsAllPage({ currentUser }) {
+function BodyRecordsAllPage({ currentUser, friendId, friendMode }) {
+  const isFriendMode = Boolean(friendId) || Boolean(friendMode);
+  const targetUserId = isFriendMode ? friendId : currentUser?.id;
   const [selectedRecords, setSelectedRecords] = useState([]);
   const [showCompare, setShowCompare] = useState(false);
   const [bodyRecords, setBodyRecords] = useState([]);
@@ -67,12 +69,12 @@ function BodyRecordsAllPage({ currentUser }) {
   };
 
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!targetUserId) return;
     setLoading(true);
     supabase
       .from('body_records')
       .select('*')
-      .eq('user_id', currentUser.id)
+      .eq('user_id', targetUserId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
       .then(async ({ data }) => {
@@ -89,7 +91,7 @@ function BodyRecordsAllPage({ currentUser }) {
         setBodyRecords(withUrls);
         setLoading(false);
       });
-  }, [currentUser?.id]);
+  }, [targetUserId]);
 
   return (
     <div className="space-y-6">
@@ -100,7 +102,7 @@ function BodyRecordsAllPage({ currentUser }) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h4l2-2h6l2 2h4v12H3V7z" />
               <circle cx="12" cy="13" r="3.5" />
             </svg>
-            나의 몸 기록 전체보기
+            {isFriendMode ? '친구의 몸 기록 전체보기' : '나의 몸 기록 전체보기'}
           </h2>
           <div className="flex items-center gap-3">
             <p className="text-xs text-gray-500">사진 2개 클릭하여 비교 가능</p>
@@ -112,7 +114,7 @@ function BodyRecordsAllPage({ currentUser }) {
                 비교하기
               </button>
             )}
-            <a href="/exercise" className="btn-secondary px-4 py-2 text-sm font-semibold">
+            <a href={isFriendMode ? `/friend/${friendId}/exercise` : '/exercise'} className="btn-secondary px-4 py-2 text-sm font-semibold">
               뒤로가기
             </a>
           </div>
@@ -214,16 +216,18 @@ function BodyRecordsAllPage({ currentUser }) {
                             선택됨
                           </span>
                         )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(record.id);
-                          }}
-                          className="text-xs px-2 py-1 rounded ml-auto"
-                          style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}
-                        >
-                          삭제
-                        </button>
+                        {!isFriendMode && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(record.id);
+                            }}
+                            className="text-xs px-2 py-1 rounded ml-auto"
+                            style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}
+                          >
+                            삭제
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

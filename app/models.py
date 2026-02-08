@@ -12,8 +12,6 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     nickname = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    meals = db.relationship('MealRecord', backref='user', lazy=True)
     journals = db.relationship('Journal', backref='user', lazy=True)
     comments = db.relationship('Comment', backref='user', lazy=True)
     likes = db.relationship('Like', backref='user', lazy=True)
@@ -25,7 +23,6 @@ class User(UserMixin, db.Model):
     
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
-
 
 class Friendship(db.Model):
     """Friendship"""
@@ -163,28 +160,6 @@ class Todo(db.Model):
     def __repr__(self):
         return f'<Todo {self.date} {self.title}>'
 
-class MealRecord(db.Model):
-    """Meal record"""
-    __tablename__ = 'meal_records'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    date = db.Column(db.Date, nullable=False, index=True)
-    meal_type = db.Column(db.String(20))  # breakfast/lunch/dinner/snack
-    food_name = db.Column(db.String(200))
-    calories = db.Column(db.Integer)
-    image_path = db.Column(db.String(500))
-    memo = db.Column(db.Text)
-    visibility = db.Column(db.String(20), default='private')  # private, friends, public
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    comments = db.relationship('Comment', backref='meal', lazy=True, cascade='all, delete-orphan')
-    likes = db.relationship('Like', backref='meal', lazy=True, cascade='all, delete-orphan')
-    
-    def __repr__(self):
-        return f'<MealRecord {self.date} {self.meal_type}>'
-
-
 class Journal(db.Model):
     """Journal"""
     __tablename__ = 'journals'
@@ -217,7 +192,6 @@ class Journal(db.Model):
             'comments': [comment.id for comment in self.comments]
         }
 
-
 class JournalCategory(db.Model):
     """Journal category"""
     __tablename__ = 'journal_categories'
@@ -240,20 +214,16 @@ class Comment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    meal_id = db.Column(db.Integer, db.ForeignKey('meal_records.id'), nullable=True, index=True)
     journal_id = db.Column(db.Integer, db.ForeignKey('journals.id'), nullable=True, index=True)
     content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
 
 class Like(db.Model):
     """Like"""
     __tablename__ = 'likes'    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    meal_id = db.Column(db.Integer, db.ForeignKey('meal_records.id'), nullable=True, index=True)
     journal_id = db.Column(db.Integer, db.ForeignKey('journals.id'), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (
-        db.UniqueConstraint('user_id', 'meal_id', name='unique_like_meal'),
         db.UniqueConstraint('user_id', 'journal_id', name='unique_like_journal'),
     )

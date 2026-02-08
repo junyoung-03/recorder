@@ -36,7 +36,7 @@ class R2Storage:
         
         Args:
             file_obj: 파일 객체 (request.files['image'])
-            key: R2에 저장될 경로 (예: 'meals/1/2024-01-01_image.jpg')
+            key: R2에 저장될 경로 (예: 'body/1/2024-01-01_image.jpg')
             content_type: MIME 타입 (예: 'image/jpeg')
         
         Returns:
@@ -85,7 +85,6 @@ class R2Storage:
         except:
             return False
 
-
 def get_storage():
     """저장소 인스턴스 반환 (R2 또는 로컬)"""
     # 환경 변수가 설정되어 있으면 R2 사용
@@ -97,7 +96,6 @@ def get_storage():
             return None
     return None
 
-
 def save_image_to_storage(file, user_id: int, category: str, date_str: str = None) -> str:
     """
     이미지를 저장소에 저장 (R2 또는 로컬)
@@ -105,7 +103,7 @@ def save_image_to_storage(file, user_id: int, category: str, date_str: str = Non
     Args:
         file: 업로드된 파일 객체
         user_id: 사용자 ID
-        category: 'meals' 또는 'body'
+        category: 'body'
         date_str: 날짜 문자열 (선택)
     
     Returns:
@@ -133,15 +131,14 @@ def save_image_to_storage(file, user_id: int, category: str, date_str: str = Non
         return url  # R2 URL 반환
     
     # 로컬 저장소 사용 (기존 방식)
-    from app.routes import MEAL_UPLOAD_FOLDER, BODY_UPLOAD_FOLDER
-    upload_folder = MEAL_UPLOAD_FOLDER if category == 'meals' else BODY_UPLOAD_FOLDER
+    from app.routes import BODY_UPLOAD_FOLDER
+    upload_folder = BODY_UPLOAD_FOLDER
     user_folder = upload_folder / str(user_id)
     user_folder.mkdir(parents=True, exist_ok=True)
     
     filepath = user_folder / filename
     file.save(str(filepath))
-    return f"uploads/{category}/{user_id}/{filename}"
-
+    return f"uploads/body/{user_id}/{filename}"
 
 def delete_image_from_storage(image_path: str) -> bool:
     """

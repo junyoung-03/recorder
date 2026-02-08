@@ -12,17 +12,15 @@ import FinanceMonthPage from './pages/FinanceMonthPage';
 import ExercisePage from './pages/ExercisePage';
 import ExerciseMonthPage from './pages/ExerciseMonthPage';
 import BodyRecordsAllPage from './pages/BodyRecordsAllPage';
-import MealsPage from './pages/MealsPage';
-import FriendMealsPage from './pages/FriendMealsPage';
 import JournalListPage from './pages/JournalListPage';
 import JournalDetailPage from './pages/JournalDetailPage';
 import JournalFormPage from './pages/JournalFormPage';
-import FriendJournalPage from './pages/FriendJournalPage';
 import FriendsPage from './pages/FriendsPage';
 import TodosMonthPage from './pages/TodosMonthPage';
 import AccountPage from './pages/AccountPage';
 import { supabase } from './lib/supabaseClient';
 import { navigate } from './lib/navigation';
+import { canAccessFriendPage } from './lib/friendPermissions';
 
 const IDLE_LIMIT_MS = 3 * 60 * 60 * 1000;
 const LAST_ACTIVE_KEY = 'recorder:lastActiveAt';
@@ -40,12 +38,9 @@ const PAGE_COMPONENTS = {
   exercise: ExercisePage,
   exerciseMonth: ExerciseMonthPage,
   bodyRecordsAll: BodyRecordsAllPage,
-  meals: MealsPage,
-  friendMeals: FriendMealsPage,
   journalList: JournalListPage,
   journalDetail: JournalDetailPage,
   journalForm: JournalFormPage,
-  friendJournal: FriendJournalPage,
   friends: FriendsPage,
   todosMonth: TodosMonthPage,
   account: AccountPage,
@@ -64,7 +59,6 @@ const resolveRoute = (pathname) => {
   if (pathname === '/exercise') return { page: 'exercise' };
   if (pathname.startsWith('/exercise/month')) return { page: 'exerciseMonth' };
   if (pathname === '/exercise/body/all') return { page: 'bodyRecordsAll' };
-  if (pathname === '/meals') return { page: 'meals' };
   if (pathname === '/journal') return { page: 'journalList' };
   if (pathname === '/journal/new') return { page: 'journalForm' };
   if (pathname.startsWith('/journal/')) {
@@ -72,9 +66,17 @@ const resolveRoute = (pathname) => {
     if (id) return { page: 'journalDetail', params: { journalId: id } };
   }
   if (pathname.startsWith('/friend/')) {
-    const [, , friendId, type] = pathname.split('/');
-    if (friendId && type === 'meals') return { page: 'friendMeals', params: { friendId } };
-    if (friendId && type === 'journal') return { page: 'friendJournal', params: { friendId } };
+    const [, , friendId, type, detailId] = pathname.split('/');
+    if (friendId && type) {
+      if (!canAccessFriendPage(type)) return { page: 'friends' };
+      if (type === 'exercise') return { page: 'exercise', params: { friendId, friendMode: true } };
+      if (type === 'body') return { page: 'bodyRecordsAll', params: { friendId, friendMode: true } };
+      if (type === 'journal' && detailId) {
+        return { page: 'journalDetail', params: { journalId: detailId, friendId, friendMode: true } };
+      }
+      if (type === 'journal') return { page: 'journalList', params: { friendId, friendMode: true } };
+    }
+    return { page: 'friends' };
   }
   if (pathname === '/friends') return { page: 'friends' };
   if (pathname === '/todos/month') return { page: 'todosMonth' };

@@ -15,14 +15,6 @@ as $$
   );
 $$;
 
-create or replace function public.can_view_meal(viewer uuid, owner uuid)
-returns boolean
-language sql
-stable
-as $$
-  select viewer = owner or public.is_friend(viewer, owner);
-$$;
-
 create or replace function public.can_view_journal(viewer uuid, owner uuid)
 returns boolean
 language sql
@@ -124,34 +116,8 @@ using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
 -- social domain tables
-alter table public.meal_records enable row level security;
 alter table public.journals enable row level security;
 alter table public.journal_categories enable row level security;
-
-create policy meal_records_select
-on public.meal_records for select
-to authenticated
-using (
-  user_id = auth.uid()
-  or visibility = 'public'
-  or (visibility = 'friends' and public.can_view_meal(auth.uid(), user_id))
-);
-
-create policy meal_records_owner_modify
-on public.meal_records for insert
-to authenticated
-with check (user_id = auth.uid());
-
-create policy meal_records_owner_update
-on public.meal_records for update
-to authenticated
-using (user_id = auth.uid())
-with check (user_id = auth.uid());
-
-create policy meal_records_owner_delete
-on public.meal_records for delete
-to authenticated
-using (user_id = auth.uid());
 
 create policy journals_select
 on public.journals for select
@@ -191,30 +157,15 @@ create policy comments_select
 on public.comments for select
 to authenticated
 using (
-  (
-    meal_id is not null and exists (
-      select 1
-      from public.meal_records m
-      where m.id = comments.meal_id
-        and (
-          m.user_id = auth.uid()
-          or m.visibility = 'public'
-          or (m.visibility = 'friends' and public.can_view_meal(auth.uid(), m.user_id))
-        )
-    )
-  )
-  or
-  (
-    journal_id is not null and exists (
-      select 1
-      from public.journals j
-      where j.id = comments.journal_id
-        and (
-          j.user_id = auth.uid()
-          or j.visibility = 'public'
-          or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
-        )
-    )
+  journal_id is not null and exists (
+    select 1
+    from public.journals j
+    where j.id = comments.journal_id
+      and (
+        j.user_id = auth.uid()
+        or j.visibility = 'public'
+        or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
+      )
   )
 );
 
@@ -223,32 +174,16 @@ on public.comments for insert
 to authenticated
 with check (
   user_id = auth.uid()
-  and (
-    (
-      meal_id is not null and exists (
-        select 1
-        from public.meal_records m
-        where m.id = comments.meal_id
-          and (
-            m.user_id = auth.uid()
-            or m.visibility = 'public'
-            or (m.visibility = 'friends' and public.can_view_meal(auth.uid(), m.user_id))
-          )
+  and journal_id is not null
+  and exists (
+    select 1
+    from public.journals j
+    where j.id = comments.journal_id
+      and (
+        j.user_id = auth.uid()
+        or j.visibility = 'public'
+        or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
       )
-    )
-    or
-    (
-      journal_id is not null and exists (
-        select 1
-        from public.journals j
-        where j.id = comments.journal_id
-          and (
-            j.user_id = auth.uid()
-            or j.visibility = 'public'
-            or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
-          )
-      )
-    )
   )
 );
 
@@ -270,30 +205,15 @@ create policy likes_select
 on public.likes for select
 to authenticated
 using (
-  (
-    meal_id is not null and exists (
-      select 1
-      from public.meal_records m
-      where m.id = likes.meal_id
-        and (
-          m.user_id = auth.uid()
-          or m.visibility = 'public'
-          or (m.visibility = 'friends' and public.can_view_meal(auth.uid(), m.user_id))
-        )
-    )
-  )
-  or
-  (
-    journal_id is not null and exists (
-      select 1
-      from public.journals j
-      where j.id = likes.journal_id
-        and (
-          j.user_id = auth.uid()
-          or j.visibility = 'public'
-          or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
-        )
-    )
+  journal_id is not null and exists (
+    select 1
+    from public.journals j
+    where j.id = likes.journal_id
+      and (
+        j.user_id = auth.uid()
+        or j.visibility = 'public'
+        or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
+      )
   )
 );
 
@@ -302,32 +222,16 @@ on public.likes for insert
 to authenticated
 with check (
   user_id = auth.uid()
-  and (
-    (
-      meal_id is not null and exists (
-        select 1
-        from public.meal_records m
-        where m.id = likes.meal_id
-          and (
-            m.user_id = auth.uid()
-            or m.visibility = 'public'
-            or (m.visibility = 'friends' and public.can_view_meal(auth.uid(), m.user_id))
-          )
+  and journal_id is not null
+  and exists (
+    select 1
+    from public.journals j
+    where j.id = likes.journal_id
+      and (
+        j.user_id = auth.uid()
+        or j.visibility = 'public'
+        or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
       )
-    )
-    or
-    (
-      journal_id is not null and exists (
-        select 1
-        from public.journals j
-        where j.id = likes.journal_id
-          and (
-            j.user_id = auth.uid()
-            or j.visibility = 'public'
-            or (j.visibility = 'friends' and public.can_view_journal(auth.uid(), j.user_id))
-          )
-      )
-    )
   )
 );
 
@@ -335,5 +239,4 @@ create policy likes_delete_own
 on public.likes for delete
 to authenticated
 using (user_id = auth.uid());
-
 

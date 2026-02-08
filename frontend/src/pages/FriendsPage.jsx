@@ -11,6 +11,8 @@ function FriendsPage({ currentUser }) {
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [outgoingRequests, setOutgoingRequests] = useState([]);
   const [identifier, setIdentifier] = useState('');
+  const [requestError, setRequestError] = useState('');
+  const [sendingRequest, setSendingRequest] = useState(false);
   const reduceMotion = useReducedMotion();
 
   const FriendRow = ({ children }) => {
@@ -59,9 +61,17 @@ function FriendsPage({ currentUser }) {
 
   const handleSendRequest = async (event) => {
     event.preventDefault();
-    if (!currentUser?.id) return;
+    if (!currentUser?.id) {
+      setRequestError('로그인이 필요합니다.');
+      return;
+    }
     const trimmed = identifier.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setRequestError('친구 ID 또는 아이디를 입력해주세요.');
+      return;
+    }
+    setRequestError('');
+    setSendingRequest(true);
     let target = null;
     if (trimmed.includes('-')) {
       const { data } = await supabase.from('users').select('id, username, nickname').eq('id', trimmed).maybeSingle();
@@ -71,8 +81,24 @@ function FriendsPage({ currentUser }) {
       const { data } = await supabase.from('users').select('id, username, nickname').eq('username', trimmed).maybeSingle();
       target = data;
     }
-    if (!target || target.id === currentUser.id) return;
-    await supabase.from('friendships').insert([{ user_id: currentUser.id, friend_id: target.id, status: 'pending' }]);
+    if (!target) {
+      setSendingRequest(false);
+      setRequestError('해당 사용자를 찾을 수 없습니다.');
+      return;
+    }
+    if (target.id === currentUser.id) {
+      setSendingRequest(false);
+      setRequestError('본인에게는 친구 요청을 보낼 수 없습니다.');
+      return;
+    }
+    const { error: requestError } = await supabase
+      .from('friendships')
+      .insert([{ user_id: currentUser.id, friend_id: target.id, status: 'pending' }]);
+    setSendingRequest(false);
+    if (requestError) {
+      setRequestError('이미 요청했거나 요청을 보낼 수 없습니다.');
+      return;
+    }
     setIdentifier('');
     loadFriends(currentUser.id);
   };
@@ -103,13 +129,6 @@ function FriendsPage({ currentUser }) {
         actions={[{ label: '친구 요청', href: '#friend-request', variant: 'primary' }]}
       />
 
-      <FilterBar>
-        <span className="text-sm text-slate-500">친구 관리</span>
-        <div className="px-3 py-1.5 rounded-full bg-slate-100 text-sm text-slate-600">
-          친구 요청 · 수락 · 관리
-        </div>
-      </FilterBar>
-
       <section id="friend-request" className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
           친구 요청 보내기
@@ -124,10 +143,15 @@ function FriendsPage({ currentUser }) {
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
           />
-          <button type="submit" className="btn-primary px-4 py-2 text-white rounded-md font-medium transition">
-            요청
+          <button
+            type="submit"
+            disabled={sendingRequest}
+            className="btn-primary px-4 py-2 text-white rounded-md font-medium transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {sendingRequest ? '요청 중...' : '요청'}
           </button>
         </form>
+        {requestError && <p className="mt-2 text-sm text-red-500">{requestError}</p>}
       </section>
 
       <section className="bg-white rounded-lg shadow-md p-6">
@@ -139,18 +163,22 @@ function FriendsPage({ currentUser }) {
             {friendsList.map((friend) => (
               <FriendRow key={friend.id || friend.username}>
                 <div
-                  className="flex items-center justify-between border rounded-md p-3 motion-card"
+                  className="flex flex-wrap items-center justify-between gap-3 border rounded-md p-3 motion-card"
                   style={{ borderColor: '#E5E7EB' }}
                 >
-                  <span>{friend.nickname || friend.username}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(friend.id)}
-                    className="text-xs px-2 py-1 rounded"
-                    style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}
-                  >
-                    삭제
-                  </button>
+                  <a href={`/friend/${friend.id}/journal`} className="font-semibold text-slate-800 hover:underline">
+                    {friend.nickname || friend.username}
+                  </a>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(friend.id)}
+                      className="text-xs px-2 py-1 rounded"
+                      style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}
+                    >
+                      삭제
+                    </button>
+                  </div>
                 </div>
               </FriendRow>
             ))}

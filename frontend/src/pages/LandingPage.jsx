@@ -188,7 +188,7 @@ function LandingPage() {
           <h2 className="text-3xl font-bold mb-6">당신의 하루 기록, 혹시 이렇게 흩어져 있나요?</h2>
           <ul className="space-y-3 text-slate-600">
             <li>• 가계부는 엑셀, 일정은 캘린더, 할 일은 메모장에 따로 적고 있다</li>
-            <li>• 운동/몸 변화, 일기, 식단은 기록해도 나중에 다시 보기 어렵다</li>
+            <li>• 운동/몸 변화, 일기는 기록해도 나중에 다시 보기 어렵다</li>
             <li>• “저번 달에 뭐 했지?” 같은 질문에 쉽게 답을 못 하겠다</li>
           </ul>
           <p className="mt-6 text-slate-700 font-medium">

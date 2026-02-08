@@ -85,7 +85,6 @@ function AccountPage({ currentUser }) {
         { key: 'todos', label: '할 일', table: 'todos' },
         { key: 'schedules', label: '일정', table: 'schedules' },
         { key: 'finance', label: '가계부', table: 'finance_records' },
-        { key: 'meals', label: '식단', table: 'meal_records' },
         { key: 'body', label: '몸 기록', table: 'body_records' },
       ];
 

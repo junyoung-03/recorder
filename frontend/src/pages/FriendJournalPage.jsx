@@ -162,6 +162,20 @@ function FriendJournalPage({ currentUser, friendId }) {
               {friendUser?.nickname || friendUser?.username}님의 일기 블로그
             </h2>
           </div>
+          <button type="button" className="btn-secondary px-4 py-2 text-sm font-semibold" onClick={() => navigate('/friends')}>
+            친구 페이지로 이동
+          </button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a href={`/friend/${friendId}/exercise`} className="btn-secondary px-3 py-1.5 text-xs font-semibold">
+            운동
+          </a>
+          <a href={`/friend/${friendId}/body`} className="btn-secondary px-3 py-1.5 text-xs font-semibold">
+            몸
+          </a>
+          <a href={`/friend/${friendId}/journal`} className="btn-secondary px-3 py-1.5 text-xs font-semibold">
+            일기
+          </a>
         </div>
       </section>
 

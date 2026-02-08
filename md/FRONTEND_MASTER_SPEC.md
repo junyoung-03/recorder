@@ -24,7 +24,7 @@
   - 일정: `/schedule`
   - 운동/몸: `/exercise`, `/exercise/month`, `/exercise/body/all`
   - 일기: `/journal`, `/journal/new`, `/journal/:id`
-  - 친구: `/friends`, `/friend/:id/meals`, `/friend/:id/journal`
+  - 친구: `/friends`, `/friend/:id/journal`
   - 할 일(월간): `/todos/month`
   - 내 계정: `/account`
 

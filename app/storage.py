@@ -38,7 +38,7 @@ class R2Storage:
         
         Args:
             file_obj: 파일 객체 (request.files['image'])
-            key: R2에 저장될 경로 (예: 'meals/1/2024-01-01_image.jpg')
+            key: R2에 저장될 경로 (예: 'body/1/2024-01-01_image.jpg')
             content_type: MIME 타입 (예: 'image/jpeg')
         
         Returns:
@@ -159,7 +159,7 @@ def save_image_to_storage(file, user_id: int, category: str, date_str: str = Non
     Args:
         file: 업로드된 파일 객체
         user_id: 사용자 ID
-        category: 'meals' 또는 'body'
+        category: 'body'
         date_str: 날짜 문자열 (선택)
     
     Returns:
