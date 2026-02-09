@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import defaultAvatar from '../assets/default-avatar.svg';
 
 const MENU_ITEMS = [
   { key: 'profile', label: '프로필' },
@@ -31,9 +32,13 @@ function AccountPage({ currentUser }) {
   const [activeKey, setActiveKey] = useState('profile');
   const [nickname, setNickname] = useState(currentUser?.nickname || '');
   const [birthDate, setBirthDate] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || defaultAvatar);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState(null);
   const [savingNickname, setSavingNickname] = useState(false);
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const nicknameInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
   const [recordStats, setRecordStats] = useState(null);
   const [recordStatsError, setRecordStatsError] = useState(null);
   const displayName = nickname.trim() || currentUser?.nickname || currentUser?.username || '사용자';
@@ -56,6 +61,8 @@ function AccountPage({ currentUser }) {
   const [notificationEmailTodo, setNotificationEmailTodo] = useState(false);
   const [notificationEmailSchedule, setNotificationEmailSchedule] = useState(false);
   const [summaryTime, setSummaryTime] = useState('21:00');
+  const PROFILE_BUCKET = 'photos';
+  const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 
   const activeLabel = useMemo(
     () => MENU_ITEMS.find((item) => item.key === activeKey)?.label,
@@ -67,6 +74,10 @@ function AccountPage({ currentUser }) {
       setBirthDate(currentUser.birth_date);
     }
   }, [currentUser?.birth_date]);
+
+  useEffect(() => {
+    setAvatarUrl(currentUser?.avatarUrl || defaultAvatar);
+  }, [currentUser?.avatarUrl]);
 
   useEffect(() => {
     if (isEditingNickname) return;
@@ -216,6 +227,117 @@ function AccountPage({ currentUser }) {
     }
   };
 
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!currentUser?.id) {
+      setAvatarError('로그인 후 사용할 수 있습니다.');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('이미지 파일만 업로드할 수 있습니다.');
+      return;
+    }
+    if (file.size > MAX_AVATAR_SIZE) {
+      setAvatarError('파일 용량은 5MB 이하만 가능합니다.');
+      return;
+    }
+
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      const extension = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const safeExtension = extension.replace(/[^a-z0-9]/g, '') || 'jpg';
+      const filePath = `avatars/${currentUser.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${safeExtension}`;
+      const { error: uploadError } = await supabase.storage.from(PROFILE_BUCKET).upload(filePath, file, {
+        upsert: true,
+        contentType: file.type || 'image/jpeg',
+      });
+      if (uploadError) {
+        setAvatarError('프로필 사진 업로드에 실패했습니다.');
+        return;
+      }
+
+      const { data: publicData } = supabase.storage.from(PROFILE_BUCKET).getPublicUrl(filePath);
+      const publicUrl = publicData?.publicUrl;
+      if (!publicUrl) {
+        setAvatarError('프로필 사진 URL을 만들지 못했습니다.');
+        return;
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { avatar_url: publicUrl },
+      });
+      if (updateError) {
+        setAvatarError('프로필 사진 저장에 실패했습니다.');
+        return;
+      }
+
+      const profilePayload = {
+        id: currentUser.id,
+        username: currentUser.username,
+        nickname: currentUser.nickname || null,
+        email: currentUser.email || null,
+        birth_date: birthDate || null,
+        avatar_url: publicUrl,
+      };
+      const { error: profileError } = await supabase.from('users').upsert([profilePayload], { onConflict: 'id' });
+      if (profileError) {
+        const message = profileError.message || '';
+        if (message.includes('avatar_url') || message.includes('schema cache')) {
+          await supabase.from('users').upsert(
+            [
+              {
+                id: currentUser.id,
+                username: currentUser.username,
+                nickname: currentUser.nickname || null,
+                email: currentUser.email || null,
+                birth_date: birthDate || null,
+              },
+            ],
+            { onConflict: 'id' },
+          );
+        }
+      }
+
+      setAvatarUrl(publicUrl);
+      window.dispatchEvent(new CustomEvent('app:profile-updated', { detail: { avatar_url: publicUrl } }));
+    } finally {
+      setAvatarUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleResetAvatar = async () => {
+    if (!currentUser?.id) return;
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { avatar_url: defaultAvatar },
+      });
+      if (updateError) {
+        setAvatarError('기본 이미지로 변경에 실패했습니다.');
+        return;
+      }
+
+      const profilePayload = {
+        id: currentUser.id,
+        username: currentUser.username,
+        nickname: currentUser.nickname || null,
+        email: currentUser.email || null,
+        birth_date: birthDate || null,
+        avatar_url: defaultAvatar,
+      };
+      await supabase.from('users').upsert([profilePayload], { onConflict: 'id' });
+
+      setAvatarUrl(defaultAvatar);
+      window.dispatchEvent(new CustomEvent('app:profile-updated', { detail: { avatar_url: defaultAvatar } }));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   
 
   return (
@@ -257,7 +379,13 @@ function AccountPage({ currentUser }) {
           {activeKey === 'profile' && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center gap-4">
-                <div className="w-24 h-24 rounded-full border border-slate-200 bg-slate-100" />
+                <div className="relative w-24 h-24 rounded-full border border-slate-200 bg-slate-100 overflow-hidden">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="프로필 사진" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-slate-100" />
+                  )}
+                </div>
                 <div className="flex-1 space-y-2">
                   <h4 className="text-base font-semibold text-slate-900">{displayName}</h4>
                   <p className="text-sm text-slate-500">아이디 {username} · Recorder 기본 프로필</p>
@@ -265,10 +393,31 @@ function AccountPage({ currentUser }) {
                     <button type="button" className="btn-secondary px-4 py-2 text-sm font-semibold" onClick={() => handleNotReady()}>
                       프로필 편집
                     </button>
-                    <button type="button" className="btn-ghost px-2 text-sm font-semibold" onClick={() => handleNotReady()}>
-                      사진 변경
+                    <button
+                      type="button"
+                      className="btn-ghost px-2 text-sm font-semibold"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                    >
+                      {avatarUploading ? '업로드 중...' : '사진 변경'}
                     </button>
+                    <button
+                      type="button"
+                      className="btn-ghost px-2 text-sm font-semibold"
+                      onClick={handleResetAvatar}
+                      disabled={avatarUploading}
+                    >
+                      기본 이미지로 변경
+                    </button>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
                   </div>
+                  {avatarError && <p className="text-xs text-red-500">{avatarError}</p>}
                 </div>
               </div>
 

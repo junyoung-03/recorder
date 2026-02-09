@@ -41,6 +41,9 @@ function MonthlyCalendar({
   compact = false,
   summaryByDate = null,
   summaryThreshold = 3,
+  eventTextClass = 'text-slate-600',
+  showEventChip = true,
+  eventChipClass = 'bg-slate-100',
 }) {
   const selectedKey = toDateKey(selectedDate);
   const todayKey = toDateKey(new Date());
@@ -62,8 +65,23 @@ function MonthlyCalendar({
   const dayLabelClass = compact ? 'px-1 py-1 text-xs' : 'px-2 py-2 text-sm';
   const dayCellClass = compact
     ? 'min-h-[56px] border border-slate-100 text-left px-1 py-1 hover:bg-slate-50 transition'
-    : 'min-h-[90px] border border-slate-100 text-left px-2 py-1 hover:bg-slate-50 transition';
+    : 'min-h-[96px] border border-slate-100 text-left px-2 py-1 hover:bg-slate-50 transition';
   const showEvents = !compact;
+  const getEventTextSizeClass = (title) => {
+    if (!title) return 'text-[13px]';
+    const length = title.length;
+    if (length > 18) return 'text-[11px]';
+    if (length > 12) return 'text-[12px]';
+    return 'text-[13px]';
+  };
+
+  const getEventBoxClass = (title) => {
+    if (!title) return 'text-[11px] px-2 py-1';
+    const length = title.length;
+    if (length > 18) return 'text-[9px] px-1.5 py-0.5';
+    if (length > 12) return 'text-[10px] px-2 py-0.5';
+    return 'text-[11px] px-2 py-1';
+  };
 
   return (
     <div className="bg-white border border-warm rounded-2xl shadow-sm">
@@ -103,13 +121,13 @@ function MonthlyCalendar({
               key={key}
               type="button"
               onClick={() => onDateClick(date)}
-              className={`${dayCellClass} ${
+              className={`${dayCellClass} relative ${
                 isWeekend ? 'calendar-weekend-bg' : ''
               }`}
             >
-              <div className="flex justify-end">
+              <div className="absolute top-1 right-1 z-10">
                 <div
-                  className={`mt-1 mr-1 w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold ${
+                  className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold ${
                     isSelected ? 'bg-red-500 text-white' : ''
                   } ${isToday && !isSelected ? 'border border-slate-300 text-slate-700' : ''}`}
                 >
@@ -123,24 +141,32 @@ function MonthlyCalendar({
                 </div>
               </div>
               {showEvents ? (
-                <div className="mt-1 space-y-1">
+                <div className="absolute top-10 left-1 right-1 pr-8 space-y-1">
                   {useSummary && (
-                    <div className="text-[11px] px-2 py-1 rounded-full bg-slate-100 text-slate-600 truncate">
+                    <div className="text-[11px] px-2 py-1 rounded-full bg-red-50 text-red-400 inline-flex items-center whitespace-nowrap">
                       {summaryText}
                     </div>
                   )}
                   {displayEvents.map((event) => (
-                    <div key={event.id} className="text-[11px] px-2 py-1 rounded-full bg-slate-100 text-slate-600 truncate">
+                    <div
+                      key={event.id}
+                      className={
+                        showEventChip
+                          ? `${getEventBoxClass(event.title)} inline-flex items-center rounded-full ${eventChipClass} ${eventTextClass} whitespace-nowrap`
+                          : `${getEventTextSizeClass(event.title)} ${eventTextClass} flex items-center gap-1 whitespace-nowrap`
+                      }
+                    >
+                      {!showEventChip && <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />}
                       {event.title}
                     </div>
                   ))}
-                  {remaining > 0 && (
+                  {remaining >= 3 && (
                     <div className="text-[11px] text-slate-400">{remaining}건수</div>
                   )}
                 </div>
               ) : (
                 dayEvents.length > 0 && (
-                  <div className="mt-1 flex justify-end">
+                  <div className={`absolute ${compact ? 'bottom-1 left-1' : 'bottom-1 right-1'}`}>
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />
                   </div>
                 )

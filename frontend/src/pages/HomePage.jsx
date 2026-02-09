@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import MonthlyCalendar from '../components/MonthlyCalendar';
 import AnimatedNumber from '../components/ui/AnimatedNumber';
 import { supabase } from '../lib/supabaseClient';
+import { getKoreanHolidayDates } from '../lib/koreanHolidays';
 
 const toDateKey = (value) => {
   if (!value) return '';
@@ -26,6 +27,7 @@ const getKoreanWeekdayShort = (value) => {
 };
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString()}원`;
+const formatTime = (value) => (value ? value.slice(0, 5) : '');
 
 function HomePage({ currentUser }) {
   const [showTodoModal, setShowTodoModal] = useState(false);
@@ -72,7 +74,10 @@ function HomePage({ currentUser }) {
     });
     return map;
   }, [monthSchedules]);
-  const holidayDates = useMemo(() => [], []);
+  const holidayDates = useMemo(
+    () => getKoreanHolidayDates([currentYear - 1, currentYear, currentYear + 1]),
+    [currentYear],
+  );
   const events = useMemo(
     () => monthSchedules.map((schedule) => ({ id: schedule.id, date: schedule.date, title: schedule.title })),
     [monthSchedules],
@@ -99,7 +104,7 @@ function HomePage({ currentUser }) {
       id: `schedule-${schedule.id || schedule.title}-${schedule.date || ''}`,
       type: '일정',
       title: schedule.title,
-      time: schedule.time,
+      time: schedule.time ? formatTime(schedule.time) : '',
       date: schedule.date,
     }));
     return items
@@ -284,10 +289,10 @@ function HomePage({ currentUser }) {
                   key={schedule.id || schedule.title}
                   className="flex items-center gap-2 p-3 rounded-xl border border-warm"
                 >
-                  {schedule.time && <span className="text-sm font-semibold">{schedule.time}</span>}
                   <span className="text-body font-semibold">
                     {schedule.title}
                   </span>
+                  {schedule.time && <span className="text-xs text-slate-500">{formatTime(schedule.time)}</span>}
                 </div>
               ))}
             </div>

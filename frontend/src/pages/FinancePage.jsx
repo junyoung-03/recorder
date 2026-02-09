@@ -4,6 +4,7 @@ import FilterBar from '../components/ui/FilterBar';
 import MonthlyCalendar from '../components/MonthlyCalendar';
 import AnimatedNumber from '../components/ui/AnimatedNumber';
 import { supabase } from '../lib/supabaseClient';
+import { getKoreanHolidayDates } from '../lib/koreanHolidays';
 
 const toDateKey = (value) => {
   if (!value) return '';
@@ -79,7 +80,10 @@ function FinancePage({ currentUser }) {
     });
     return result;
   }, [records]);
-  const holidayDates = useMemo(() => [], []);
+  const holidayDates = useMemo(
+    () => getKoreanHolidayDates([currentYear - 1, currentYear, currentYear + 1]),
+    [currentYear],
+  );
   const recordsByDate = useMemo(() => {
     const grouped = new Map();
     records.forEach((record) => {
@@ -225,15 +229,15 @@ function FinancePage({ currentUser }) {
       transaction_type: formData.get('transaction_type'),
       category: formData.get('category') || null,
       memo: formData.get('memo') || null,
-      is_fixed: formData.get('is_fixed') === 'on',
     };
     const { error } = await supabase.from('finance_records').insert([payload]);
     if (error) {
       alert('오류가 발생했습니다.');
-      return;
+      return false;
     }
     setShowAddModal(false);
     loadMonthRecords(currentUser.id, currentYear, currentMonth);
+    return true;
   };
 
   const handleDeleteRecord = async (recordId) => {
@@ -622,10 +626,13 @@ function FinancePage({ currentUser }) {
               <h3 className="text-xl font-bold" style={{ color: '#1F2937' }}>거래 추가</h3>
               <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
-            <form className="space-y-4" onSubmit={(event) => {
-              handleAddRecord(event);
-              setShowAddModal(false);
-            }}>
+            <form
+              className="space-y-4"
+              onSubmit={async (event) => {
+                const ok = await handleAddRecord(event);
+                if (ok) setShowAddModal(false);
+              }}
+            >
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>구분</label>

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useInViewOnce } from '../hooks/useInViewOnce';
 
@@ -54,6 +54,10 @@ const previewCards = [
     caption: '가계부 캘린더와 요약 지표로 소비 패턴을 파악합니다.',
   },
   {
+    title: '운동·몸 기록을 함께 보는 타임라인',
+    caption: '운동 로그와 몸 변화 기록을 한 화면에서 흐름으로 확인합니다.',
+  },
+  {
     title: '좋아요/댓글이 달리는 일기 화면',
     caption: '친구와 기록을 공유하며 소셜하게 기록을 이어갑니다.',
   },
@@ -80,6 +84,17 @@ function AnimatedSection({ children, className, ...rest }) {
 
 function LandingPage() {
   const reduceMotion = useReducedMotion();
+  const previewItems = useMemo(() => {
+    const items = [...previewCards];
+    const hasExercise = items.some((item) => item.title.includes('운동'));
+    if (!hasExercise) {
+      items.splice(2, 0, {
+        title: '운동·몸 기록을 함께 보는 타임라인',
+        caption: '운동 로그와 몸 변화 기록을 한 화면에서 흐름으로 확인합니다.',
+      });
+    }
+    return items;
+  }, []);
   const staggerContainer = reduceMotion
     ? undefined
     : {
@@ -261,21 +276,21 @@ function LandingPage() {
           </div>
         </div>
         <motion.div
-          className="grid md:grid-cols-3 gap-8 md:justify-items-center"
+          className="grid grid-cols-1 md:grid-cols-2 gap-8"
           variants={staggerContainer}
           initial={reduceMotion ? 'visible' : 'hidden'}
           whileInView={reduceMotion ? undefined : 'visible'}
           viewport={{ once: true, amount: 0.2 }}
         >
-          {previewCards.map((preview) => (
+          {previewItems.map((preview) => (
             <motion.div
               key={preview.title}
               variants={staggerItem}
               whileHover={hoverLift}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-[360px] w-full hover:shadow-md transition-shadow"
+              className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm w-full hover:shadow-md transition-shadow"
             >
-              <div className="h-40 rounded-xl bg-slate-50 border border-slate-200 mb-4 flex flex-col items-center justify-center text-slate-500 text-sm">
+              <div className="h-52 rounded-xl bg-slate-50 border border-slate-200 mb-4 flex flex-col items-center justify-center text-slate-500 text-sm">
                 <div className="text-2xl mb-2">🗂️</div>
                 <div>아직 기록이 없어요</div>
               </div>

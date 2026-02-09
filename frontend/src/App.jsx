@@ -103,13 +103,22 @@ function App() {
       }
       return;
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('users')
-      .select('id, username, nickname, birth_date')
+      .select('id, username, nickname, birth_date, avatar_url')
       .eq('id', user.id)
       .maybeSingle();
+    let resolvedProfile = data;
+    if (error) {
+      const fallback = await supabase
+        .from('users')
+        .select('id, username, nickname, birth_date')
+        .eq('id', user.id)
+        .maybeSingle();
+      resolvedProfile = fallback.data || null;
+    }
     if (mountedRef?.current) {
-      setProfile(data || null);
+      setProfile(resolvedProfile || null);
       setCurrentUser(user);
     }
   }, []);
@@ -157,6 +166,21 @@ function App() {
   }, []);
 
   const profileComplete = Boolean(profile?.username && profile?.birth_date);
+  const normalizeAvatarUrl = (rawValue) => {
+    if (!rawValue) return null;
+    if (rawValue.startsWith('http')) {
+      if (rawValue.includes('/storage/v1/object/') && !rawValue.includes('/storage/v1/object/public/')) {
+        return rawValue.replace('/storage/v1/object/', '/storage/v1/object/public/');
+      }
+      return rawValue;
+    }
+    if (rawValue.startsWith('/') || rawValue.startsWith('data:')) {
+      return rawValue;
+    }
+    const { data } = supabase.storage.from('photos').getPublicUrl(rawValue);
+    return data?.publicUrl || null;
+  };
+
   const appUser = currentUser
     ? {
         isAuthenticated: profileComplete,
@@ -165,6 +189,7 @@ function App() {
         username: profile?.username || currentUser.user_metadata?.username || currentUser.email,
         nickname: profile?.nickname || currentUser.user_metadata?.nickname || null,
         birth_date: profile?.birth_date || currentUser.user_metadata?.birth_date || null,
+        avatarUrl: normalizeAvatarUrl(currentUser.user_metadata?.avatar_url || profile?.avatar_url || null),
         profileComplete,
       }
     : { isAuthenticated: false, profileComplete: false };
@@ -200,10 +225,12 @@ function App() {
     const username = profile?.username || currentUser.user_metadata?.username;
     const nickname = profile?.nickname || currentUser.user_metadata?.nickname;
     const birthDate = profile?.birth_date || currentUser.user_metadata?.birth_date;
+    const avatarUrl = currentUser.user_metadata?.avatar_url || profile?.avatar_url;
 
     if (username) payload.username = username;
     if (nickname) payload.nickname = nickname;
     if (birthDate) payload.birth_date = birthDate;
+    if (avatarUrl) payload.avatar_url = avatarUrl;
 
     const signature = JSON.stringify(payload);
     if (lastSyncedProfile.current === signature) return;

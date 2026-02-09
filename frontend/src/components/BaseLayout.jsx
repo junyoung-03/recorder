@@ -159,7 +159,15 @@ function BaseLayout({ children, currentUser, activePath = '/', page }) {
                   친구 페이지 나가기
                 </button>
               )}
-              <div className="w-9 h-9 rounded-full bg-slate-200" />
+              {currentUser?.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt="프로필 사진"
+                  className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-slate-200" />
+              )}
               <span className="text-sm font-medium text-slate-700">
                 {currentUser?.nickname || currentUser?.username}
               </span>

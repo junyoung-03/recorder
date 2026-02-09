@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import MonthlyCalendar from '../components/MonthlyCalendar';
 import EmptyState from '../components/ui/EmptyState';
 import { supabase } from '../lib/supabaseClient';
+import { getKoreanHolidayDates } from '../lib/koreanHolidays';
 
 const visibilityMeta = {
   private: { label: '나만 보기' },
@@ -124,6 +125,10 @@ function JournalListPage({ currentUser, friendId, friendMode }) {
   const currentDate = useMemo(() => new Date(), []);
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth() + 1;
+  const holidayDates = useMemo(
+    () => getKoreanHolidayDates([currentYear - 1, currentYear, currentYear + 1]),
+    [currentYear],
+  );
   const categoryCounts = useMemo(() => {
     const counts = { __uncategorized: 0 };
     journals.forEach((journal) => {
@@ -214,7 +219,7 @@ function JournalListPage({ currentUser, friendId, friendMode }) {
               year={currentYear}
               month={currentMonth}
               selectedDate={currentDate}
-              holidayDates={[]}
+              holidayDates={holidayDates}
               events={[]}
               onDateClick={() => {}}
               onPrevMonth={() => {}}

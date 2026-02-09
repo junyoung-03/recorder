@@ -4,6 +4,7 @@ import FilterBar from '../components/ui/FilterBar';
 import MonthlyCalendar from '../components/MonthlyCalendar';
 import { supabase } from '../lib/supabaseClient';
 import ModalContainer from '../components/ui/ModalContainer';
+import { getKoreanHolidayDates } from '../lib/koreanHolidays';
 
 const toDateKey = (value) => {
   if (!value) return '';
@@ -33,6 +34,11 @@ const getKoreanWeekdayShort = (value) => {
   return weekdays[date.getDay()];
 };
 
+const formatTime = (value) => {
+  if (!value) return '';
+  return value.slice(0, 5);
+};
+
 function SchedulePage({ currentUser }) {
   const today = useMemo(() => new Date(), []);
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -52,9 +58,18 @@ function SchedulePage({ currentUser }) {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [detailContent, setDetailContent] = useState(null);
   const [startDate, setStartDate] = useState(selectedDateKey);
   const [endDate, setEndDate] = useState('');
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickError, setQuickError] = useState('');
+  const [editDate, setEditDate] = useState(selectedDateKey);
+  const [editTime, setEditTime] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editMemo, setEditMemo] = useState('');
+  const [editColor, setEditColor] = useState('#2563EB');
+  const [editError, setEditError] = useState('');
   const todoCards = useMemo(() => {
     const grouped = new Map();
     todos.forEach((todo) => {
@@ -77,12 +92,32 @@ function SchedulePage({ currentUser }) {
     () => todoCards.filter((card) => card.todos && card.todos.length > 0),
     [todoCards],
   );
+  const todayTodoCard = useMemo(
+    () => todoCards.find((card) => card.date === todayKey),
+    [todoCards, todayKey],
+  );
+  const selectedSchedules = useMemo(
+    () => schedules.filter((schedule) => schedule.date === selectedDateKey),
+    [schedules, selectedDateKey],
+  );
+  const upcomingSchedules = useMemo(() => {
+    const upcoming = schedules
+      .filter((schedule) => schedule.date >= todayKey)
+      .sort((a, b) => {
+        if (a.date === b.date) return (a.time || '').localeCompare(b.time || '');
+        return a.date.localeCompare(b.date);
+      });
+    return upcoming.slice(0, 5);
+  }, [schedules, todayKey]);
 
   const events = useMemo(
     () => schedules.map((schedule) => ({ id: schedule.id, date: schedule.date, title: schedule.title })),
     [schedules],
   );
-  const holidayDates = useMemo(() => [], []);
+  const holidayDates = useMemo(
+    () => getKoreanHolidayDates([currentYear - 1, currentYear, currentYear + 1]),
+    [currentYear],
+  );
 
   const openAddModal = () => {
     setStartDate(selectedDateKey);
@@ -133,6 +168,35 @@ function SchedulePage({ currentUser }) {
       return;
     }
     setShowTodoModal(false);
+    loadSchedules(currentUser.id, currentYear, currentMonth);
+  };
+
+  const handleQuickAddSchedule = async (event) => {
+    event.preventDefault();
+    const trimmed = quickTitle.trim();
+    if (!trimmed) {
+      setQuickError('일정 제목을 입력해주세요.');
+      return;
+    }
+    if (!currentUser?.id) return;
+    setQuickError('');
+    const payload = {
+      user_id: currentUser.id,
+      date: selectedDateKey,
+      time: null,
+      title: trimmed,
+      memo: null,
+      category: null,
+      color: null,
+      repeat_type: 'none',
+      completed: false,
+    };
+    const { error } = await supabase.from('schedules').insert([payload]);
+    if (error) {
+      setQuickError('일정 추가에 실패했습니다.');
+      return;
+    }
+    setQuickTitle('');
     loadSchedules(currentUser.id, currentYear, currentMonth);
   };
 
@@ -204,6 +268,41 @@ function SchedulePage({ currentUser }) {
     setShowDetailModal(true);
   };
 
+  const openEditModal = (schedule) => {
+    if (!schedule) return;
+    setEditDate(schedule.date || selectedDateKey);
+    setEditTime(schedule.time || '');
+    setEditTitle(schedule.title || '');
+    setEditMemo(schedule.memo || '');
+    setEditColor(schedule.color || '#2563EB');
+    setEditError('');
+    setShowDetailModal(false);
+    setShowEditModal(true);
+  };
+
+  const handleUpdateSchedule = async (event) => {
+    event.preventDefault();
+    if (!detailContent?.id) return;
+    if (!editTitle.trim()) {
+      setEditError('제목을 입력해주세요.');
+      return;
+    }
+    const payload = {
+      date: editDate || detailContent.date,
+      time: editTime || null,
+      title: editTitle.trim(),
+      memo: editMemo || null,
+      color: editColor || null,
+    };
+    const { error } = await supabase.from('schedules').update(payload).eq('id', detailContent.id);
+    if (error) {
+      setEditError('일정 수정에 실패했습니다.');
+      return;
+    }
+    setShowEditModal(false);
+    loadSchedules(currentUser?.id, currentYear, currentMonth);
+  };
+
   const deleteSchedule = async (scheduleId) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const { error } = await supabase.from('schedules').delete().eq('id', scheduleId);
@@ -260,13 +359,15 @@ function SchedulePage({ currentUser }) {
 
 
 
-      <section className="bg-white rounded-2xl shadow-sm border border-warm p-6">
+      <section id="monthly-calendar" className="bg-white rounded-2xl shadow-sm border border-warm p-6">
         <MonthlyCalendar
           year={currentYear}
           month={currentMonth}
           events={events}
           selectedDate={selectedDateKey}
           holidayDates={holidayDates}
+          eventTextClass="text-slate-900"
+          showEventChip={false}
           onDateClick={handleCalendarDateClick}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
@@ -300,24 +401,32 @@ function SchedulePage({ currentUser }) {
         </div>
 
         <div className="border-t pt-4" style={{ borderColor: '#E5E7EB' }}>
-          {schedules.length > 0 ? (
+          {selectedSchedules.length > 0 ? (
             <div className="space-y-4">
-              {schedules.map((schedule) => (
+              {selectedSchedules.map((schedule) => (
                 <div key={schedule.id} className="flex gap-4">
-                  <div className="text-sm font-semibold text-slate-500 w-16">
-                    {schedule.time || '하루'}
-                  </div>
                   <div className="flex-1">
-                    <div
-                      className="p-3 rounded-lg border border-warm hover:bg-warm-surface cursor-pointer transition motion-card"
-                      style={{ borderLeft: `4px solid ${schedule.color || '#2563EB'}` }}
+                    <button
+                      type="button"
+                      className="w-full flex items-start gap-3 text-left py-1 transition motion-card"
                       onClick={() => showDetail(schedule.id)}
                     >
-                      <div className={`text-body font-semibold ${schedule.completed ? 'line-through text-gray-400' : ''}`}>
-                        {schedule.title}
+                      <span
+                        className="mt-2 inline-block w-2 h-2 rounded-full"
+                        style={{ backgroundColor: schedule.color || '#2563EB' }}
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-body font-semibold ${schedule.completed ? 'line-through text-gray-400' : ''}`}>
+                            {schedule.title}
+                          </span>
+                          {schedule.time && (
+                            <span className="text-xs text-slate-500">{formatTime(schedule.time)}</span>
+                          )}
+                        </div>
+                        {schedule.memo && <p className="text-muted mt-1">{schedule.memo}</p>}
                       </div>
-                      {schedule.memo && <p className="text-muted mt-1">{schedule.memo}</p>}
-                    </div>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -338,48 +447,41 @@ function SchedulePage({ currentUser }) {
                 <svg viewBox="0 0 24 24" className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M4 6h16M4 12h3m-3 6h16" />
                 </svg>
-                해야 할 일 (이번 주)
+                오늘 해야 할 일
               </h2>
-              <p className="text-muted mt-1">실제 할 일이 있는 날짜만 보여줍니다.</p>
+              <p className="text-muted mt-1">오늘 해야 할 일을 확인하세요.</p>
             </div>
             <div className="flex gap-2">
               <a href="/todos/month" className="btn-secondary px-4 py-2 text-sm font-semibold transition">전체보기</a>
               <button onClick={() => setShowTodoModal(true)} className="btn-primary px-4 py-2 text-white text-sm font-semibold transition">+할일</button>
             </div>
           </div>
-          {activeTodoCards.length > 0 ? (
-            <div className="space-y-4">
-              {activeTodoCards.map((card) => (
-                <div key={card.date} className="border border-warm rounded-xl p-4 motion-card">
-                  <div className="text-body font-semibold mb-3">
-                    {formatKoreanDate(card.date)}
+          {todayTodoCard && todayTodoCard.todos.length > 0 ? (
+            <div className="border border-warm rounded-xl p-4 motion-card">
+              <div className="space-y-2">
+                {todayTodoCard.todos.map((todo) => (
+                  <div key={todo.id} className="flex items-center justify-between gap-2 transition-all duration-150 ease-out">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={todo.completed}
+                        onChange={(event) => handleToggleTodo(todo.id, event.target.checked)}
+                        className="transition-transform duration-150 ease-out checked:scale-110"
+                      />
+                      <span className={`text-sm transition-colors duration-150 ${todo.completed ? 'line-through text-gray-400' : ''}`}>
+                        {todo.title}
+                      </span>
+                    </label>
+                    <button onClick={() => handleDeleteTodo(todo.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}>
+                      삭제
+                    </button>
                   </div>
-                  <div className="space-y-2">
-                    {card.todos.map((todo) => (
-                      <div key={todo.id} className="flex items-center justify-between gap-2 transition-all duration-150 ease-out">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={todo.completed}
-                            onChange={(event) => handleToggleTodo(todo.id, event.target.checked)}
-                            className="transition-transform duration-150 ease-out checked:scale-110"
-                          />
-                          <span className={`text-sm transition-colors duration-150 ${todo.completed ? 'line-through text-gray-400' : ''}`}>
-                            {todo.title}
-                          </span>
-                        </label>
-                        <button onClick={() => handleDeleteTodo(todo.id)} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}>
-                          삭제
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           ) : (
             <div className="text-center py-10 text-muted">
-              이번 주에 완료할 할 일이 없어요.
+              오늘 할 일이 없습니다.
             </div>
           )}
         </div>
@@ -390,56 +492,37 @@ function SchedulePage({ currentUser }) {
               <svg viewBox="0 0 24 24" className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" strokeWidth="1.6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 6v2m8-2v2M5 9h14M6 4h12a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />
               </svg>
-              이번 달 일정 목록
+              이번 달 일정
             </h2>
+            <a href="#monthly-calendar" className="btn-secondary px-3 py-2 text-sm font-semibold transition">
+              이번 달 전체 일정 보기
+            </a>
           </div>
-          <div className="space-y-6">
-            {schedulesByDateList.length > 0 ? (
-              schedulesByDateList.map(([dateStr, daySchedules]) => (
-                <div key={dateStr} className="border-b pb-4 last:border-b-0" style={{ borderColor: '#E5E7EB' }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <h3
-                      className="text-lg font-semibold cursor-pointer hover:text-blue-600"
-                      style={{ color: '#1F2937' }}
-                      onClick={() => {
-                        setSelectedDate(dateStr);
-                        const dateObj = new Date(dateStr);
-                        setCurrentYear(dateObj.getFullYear());
-                        setCurrentMonth(dateObj.getMonth() + 1);
-                      }}
-                    >
-                      {formatKoreanDate(dateStr)} ({getKoreanWeekdayShort(dateStr)})
-                    </h3>
-                    <span className="text-sm px-2 py-1 rounded-md" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
-                      {daySchedules.length}건
-                    </span>
+          {upcomingSchedules.length > 0 ? (
+            <div className="space-y-3">
+              {upcomingSchedules.map((schedule) => (
+                <div
+                  key={schedule.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-warm hover:bg-warm-surface cursor-pointer transition motion-card"
+                  onClick={() => showDetail(schedule.id)}
+                >
+                  <div className="text-xs text-slate-500 w-24">
+                    {formatKoreanDate(schedule.date)} ({getKoreanWeekdayShort(schedule.date)})
                   </div>
-                  <div className="space-y-2 ml-4">
-                    {daySchedules.map((schedule) => (
-                      <div
-                        key={schedule.id}
-                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all duration-150 ease-out hover:bg-gray-50 hover:-translate-y-0.5 motion-card"
-                        onClick={() => showDetail(schedule.id)}
-                        style={{ borderLeft: `3px solid ${schedule.color || '#2563EB'}` }}
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            {schedule.time && <span className="text-sm font-semibold">{schedule.time}</span>}
-                            <span className={`text-sm font-semibold ${schedule.completed ? 'line-through text-gray-400' : ''}`} style={{ color: '#1F2937' }}>
-                              {schedule.title}
-                            </span>
-                          </div>
-                          {schedule.memo && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{schedule.memo}</p>}
-                        </div>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-semibold ${schedule.completed ? 'line-through text-gray-400' : ''}`}>
+                      {schedule.title}
+                    </span>
+                    {schedule.time && (
+                      <span className="text-xs text-slate-500">{formatTime(schedule.time)}</span>
+                    )}
                   </div>
                 </div>
-              ))
-            ) : (
-              <p className="text-center py-8" style={{ color: '#6B7280' }}>이번 달 일정이 없습니다.</p>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center py-8" style={{ color: '#6B7280' }}>다가오는 일정이 없습니다.</p>
+          )}
         </div>
       </section>
 
@@ -554,13 +637,86 @@ function SchedulePage({ currentUser }) {
                 </tbody>
               </table>
               <div className="flex gap-2 mt-4">
-                <button className="btn-primary px-4 py-2 text-white text-sm font-semibold" onClick={() => alert('수정 기능은 추후 구현 예정입니다.')}>수정</button>
+                <button
+                  className="btn-primary px-4 py-2 text-white text-sm font-semibold"
+                  onClick={() => openEditModal(detailContent)}
+                >
+                  수정
+                </button>
                 <button className="btn-secondary px-4 py-2 text-sm font-semibold text-red-500" onClick={() => deleteSchedule(detailContent.id)}>
                   삭제
                 </button>
               </div>
             </div>
             )}
+          </div>
+      </ModalContainer>
+
+      <ModalContainer open={showEditModal} onClose={() => setShowEditModal(false)}>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold" style={{ color: '#1F2937' }}>일정 수정</h3>
+              <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <form className="space-y-4" onSubmit={handleUpdateSchedule}>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>제목 *</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  required
+                  className="w-full p-2 border rounded-md motion-input"
+                  style={{ borderColor: '#E5E7EB' }}
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>날짜</label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(event) => setEditDate(event.target.value)}
+                    className="w-full p-2 border rounded-md motion-input"
+                    style={{ borderColor: '#E5E7EB' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>시간 (선택)</label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(event) => setEditTime(event.target.value)}
+                    className="w-full p-2 border rounded-md motion-input"
+                    style={{ borderColor: '#E5E7EB' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>메모 / 장소 (선택)</label>
+                <textarea
+                  rows="2"
+                  value={editMemo}
+                  onChange={(event) => setEditMemo(event.target.value)}
+                  className="w-full p-2 border rounded-md motion-input"
+                  style={{ borderColor: '#E5E7EB' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#1F2937' }}>색상</label>
+                <input
+                  type="color"
+                  value={editColor}
+                  onChange={(event) => setEditColor(event.target.value)}
+                  className="h-10 w-16 rounded-md border border-slate-200"
+                />
+              </div>
+              {editError && <p className="text-xs text-red-500">{editError}</p>}
+              <div className="flex gap-2">
+                <button type="submit" className="btn-primary flex-1 px-4 py-2 text-white text-sm font-semibold transition">저장</button>
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary px-4 py-2 text-sm font-semibold transition">취소</button>
+              </div>
+            </form>
           </div>
       </ModalContainer>
     </div>
