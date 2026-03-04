@@ -7,7 +7,7 @@
 
 ### 1. 인증
 - 회원가입 / 로그인
-- 세션 기반 인증 (Flask-Login)
+- Supabase Auth 기반 인증
 
 ### 2. 가계부
 - 수입/지출 기록
@@ -36,90 +36,49 @@
 - 친구의 일기 보기 (권한 체크)
 
 ## 기술 스택
-- 백엔드: Flask (Python)
+- 백엔드: 없음 (Supabase로 대체)
 - 프론트엔드: React + Vite
 - 스타일: Tailwind CSS
-- 데이터베이스: SQLite
-- 이미지 저장소: 로컬 / Cloudflare R2 / Supabase Storage (선택)
+- 데이터베이스: Supabase Postgres
+- 이미지 저장소: Supabase Storage
 
 ## 설치 및 실행
 
-### 1. 가상환경 생성 및 활성화
-```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Mac/Linux
-source venv/bin/activate
-```
-
-### 2. 패키지 설치
-```bash
-pip install -r requirements.txt
-```
-
-### 3. 프론트 빌드
+### 1. 프론트 설치
 ```bash
 cd frontend
 npm install
-npm run build
 ```
 
-### 4. 실행
+### 2. 개발 실행
 ```bash
-python run.py
+npm run dev
 ```
 
-브라우저에서 `http://localhost:5000` 접속
+브라우저에서 `http://localhost:5174` 접속
 
-## 환경 변수 (선택)
-이미지 저장을 클라우드로 쓰려면 `.env`에 아래를 설정하세요.
+## 환경 변수
+프론트에서 Supabase를 사용하려면 아래를 설정하세요.
 
-### Supabase Storage
 ```
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key
-SUPABASE_BUCKET=photos
-SUPABASE_PUBLIC_URL=https://your-project.supabase.co/storage/v1/object/public/photos
-```
-
-### Cloudflare R2
-```
-R2_ACCOUNT_ID=your-account-id
-R2_ACCESS_KEY_ID=your-access-key
-R2_SECRET_ACCESS_KEY=your-secret-key
-R2_BUCKET_NAME=recorder-images
-R2_PUBLIC_URL=https://pub-xxxxx.r2.dev
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 ## 프로젝트 구조
 ```
 daily-life-tracker/
-├── app/
-│   ├── __init__.py          # Flask 앱 초기화
-│   ├── models.py            # SQLAlchemy 모델
-│   ├── routes.py            # 라우트 및 API
-│   └── storage.py           # 이미지 저장 유틸
 ├── frontend/
 │   ├── src/                 # React 소스
-│   └── dist/                # Vite 빌드 (개발 시)
-├── static/
-│   └── dist/                # 배포용 프론트 빌드 결과
-├── templates/
-│   └── react_index.html     # React 엔트리 템플릿
-├── instance/
-│   └── database.db          # SQLite DB
-├── run.py                   # 실행 파일
-└── requirements.txt         # 패키지 목록
+│   ├── public/              # 정적 파일
+│   └── dist/                # 빌드 결과 (배포 시)
+└── md/                      # 문서
 ```
 
 ## 주의사항
 이 프로젝트는 학습/개인용으로 구성되어 있습니다.  
 실서비스로 사용 시 아래 항목을 개선하세요.
-- 비밀번호 해시화
-- 운영 DB 사용 (PostgreSQL 등)
+- RLS 정책 검증/감사
 - HTTPS 적용
-- CSRF/보안 설정 강화
+- 키 회전/권한 최소화
 

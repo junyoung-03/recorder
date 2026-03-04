@@ -1,4 +1,4 @@
-# Recorder 시스템 아키텍처 (현재 상태 요약)
+# Recorder 시스템 아키텍처 (현재 코드 기준)
 
 ## 1. 프로젝트 개요
 
@@ -7,12 +7,12 @@
 
 ---
 
-## 2. 핵심 원칙 (현재 구현)
+## 2. 핵심 원칙
 
-- 개인 데이터는 **Supabase RLS**로 제한한다.
-- 친구 공유 데이터는 **friendships 기반 RLS 정책**으로 제한한다.
-- 이미지 저장은 **Supabase Storage** 사용.
-- 프론트는 React(Vite), 서버는 없고 Supabase(Auth/DB/Storage)로 구성된다.
+- 백엔드는 없고 **Supabase(Auth/DB/Storage)** 중심으로 동작한다.
+- 개인 데이터는 **RLS**로 보호한다.
+- 친구 공유 데이터는 **friendships + visibility**로 제한한다.
+- 이미지는 **Supabase Storage**에 저장한다.
 
 ---
 
@@ -32,63 +32,31 @@ Auth Session       Postgres (RLS)     Storage (Images)
 
 ---
 
-## 4. 서버/인프라 구성 (현재 구현)
+## 4. 실행 방식
 
-### 4.1 실행 방식
 - 개발: `npm run dev` (Vite)
 - 배포: Vercel (정적 프론트)
-
-### 4.2 인증/세션
-- Supabase Auth 기반 인증
-- 프론트에서 `supabase.auth.getUser()`로 사용자 식별
-
-### 4.3 데이터베이스
-- Supabase Postgres 고정 사용
+- 환경변수: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
 ---
 
-## 5. 도메인 구조 (현재 코드 기준)
+## 5. 라우팅 구조 (App.jsx 기준)
 
-### 5.1 도메인 분리
-| Domain | 설명 |
-|---|---|
-| Auth | 로그인/회원가입 |
-| Friends | 친구 요청/수락 |
-| Private | 개인 전용 데이터 |
-| Social | 친구 공유 데이터 |
-| Media Access | 스토리지 접근 제어 |
+### 5.1 공용/인증
+- `/` `/landing`
+- `/login` `/register` `/reset-password`
 
-### 5.2 Private Domain (Owner-only)
-**포함**
-- 홈 대시보드
-- 가계부
-- 일정
-- 운동/몸 기록
-- 할 일
+### 5.2 개인 영역 (Private)
+- `/dashboard`
+- `/finance` `/finance/month`
+- `/schedule`
+- `/exercise` `/exercise/month` `/exercise/body/all`
+- `/todos/month`
+- `/account`
 
-**보안**
-- RLS 정책 `auth.uid() = user_id`
-
-### 5.3 Social Domain (Friends-only)
-**포함**
-- 일기
-- 운동/몸 공유 뷰 (friend 모드)
-
-**보안**
-- 친구 관계는 상호 승인
-- RLS에서 `friendships` + `visibility`로 제한
-
----
-
-## 6. 친구 콘텐츠 접근
-
-**설계**
-- 내 페이지는 내 콘텐츠만 유지
-- 친구 클릭 시 **기존 페이지를 friend 모드로 전환**하여 접근
-- friend 모드에서는 **읽기 전용(추가/수정/삭제 비활성화)**
-- friend 모드에서 **네비게이션은 운동/몸/일기만 허용**
-
-**라우트**
+### 5.3 소셜/친구
+- `/friends`
+- `/journal` `/journal/new` `/journal/:id`
 - `/friend/:id/exercise`
 - `/friend/:id/body`
 - `/friend/:id/journal`
@@ -96,18 +64,36 @@ Auth Session       Postgres (RLS)     Storage (Images)
 
 ---
 
-## 7. 이미지 저장/접근 구조
+## 6. 사용자/프로필 흐름
 
-### 7.1 저장 방식
-- Supabase Storage bucket 사용 (`body`)
-
-### 7.2 접근 방식
-- Supabase Storage RLS로 접근 제어
-- 클라이언트는 Storage public URL 또는 signed URL 사용
+- 로그인 상태는 `supabase.auth.getSession()`으로 복원
+- 프로필은 `public.users`에서 조회 (username, nickname, birth_date, avatar_url)
+- Auth 메타데이터와 `public.users`를 상호 보정/동기화
+- `username + birth_date`가 없으면 `/register`로 유도
 
 ---
 
-## 8. 데이터베이스 모델 (Supabase 테이블 기준)
+## 7. 친구 모드 접근 제어
+
+- 친구 페이지는 **기존 페이지를 friend 모드로 전환**
+- friend 모드에서는 **읽기 전용**
+- friend 모드 네비게이션: **운동/몸/일기만 허용**
+
+---
+
+## 8. 이미지 저장/접근 구조
+
+### 8.1 Storage 버킷
+- `body` : 몸 기록 이미지 (signed URL 사용)
+- `photos` : 프로필 사진 (public URL 사용)
+
+### 8.2 접근 방식
+- `body`는 `createSignedUrl`로 접근
+- `photos`는 public URL 또는 경로에서 public URL 생성
+
+---
+
+## 9. 데이터베이스 모델 (Supabase 테이블 기준)
 
 **사용자/관계**
 - `users`
@@ -129,7 +115,7 @@ Auth Session       Postgres (RLS)     Storage (Images)
 
 ---
 
-## 9. 기술 스택 요약
+## 10. 기술 스택 요약
 
 | 영역 | 기술 | 비고 |
 |---|---|---|
@@ -139,40 +125,6 @@ Auth Session       Postgres (RLS)     Storage (Images)
 | Storage | Supabase Storage | 이미지 저장 |
 | Front | React + Vite | SPA |
 | Style | Tailwind CSS | UI |
-
----
-
-## 10. 아키텍처 다이어그램 (현재 구현)
-
-```
-+-------------------------------------------------------------+
-|                          Client                             |
-|                     (Web Browser)                           |
-|                                                             |
-|  [PRIVATE]                                                   |
-|    /          Home Dashboard                                |
-|    /finance   Finance                                       |
-|    /schedule  Schedule                                      |
-|    /exercise  Exercise                                      |
-|    /todos     Todos                                         |
-|                                                             |
-|  [SOCIAL - FRIENDS ONLY]                                    |
-|    /journal                   내 일기                       |
-|    /friend/{id}/exercise       친구 운동                      |
-|    /friend/{id}/body           친구 몸 기록                   |
-|    /friend/{id}/journal        친구 일기                      |
-|    /friend/{id}/journal/{id}   친구 일기 상세                  |
-+------------------------------+------------------------------+
-                               |
-                               v
-+-------------------------------------------------------------+
-|                         Supabase                            |
-|  Auth (JWT) + Postgres (RLS) + Storage                      |
-|                                                             |
-|  RLS 정책으로 권한 제어                                      |
-|  Storage RLS로 이미지 접근 제어                              |
-+------------------------------+------------------------------+
-```
 
 ---
 

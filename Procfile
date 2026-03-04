@@ -1,5 +1,0 @@
-web: gunicorn run:app
-
-
-
-

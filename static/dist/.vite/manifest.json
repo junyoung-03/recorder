@@ -1,11 +1,43 @@
 {
+  "_vendor-CX6w_-Go.js": {
+    "file": "assets/vendor-CX6w_-Go.js",
+    "name": "vendor"
+  },
+  "_vendor-motion-Do-hI8DX.js": {
+    "file": "assets/vendor-motion-Do-hI8DX.js",
+    "name": "vendor-motion",
+    "imports": [
+      "_vendor-react-BX3OjIHU.js",
+      "_vendor-CX6w_-Go.js"
+    ]
+  },
+  "_vendor-react-BX3OjIHU.js": {
+    "file": "assets/vendor-react-BX3OjIHU.js",
+    "name": "vendor-react",
+    "imports": [
+      "_vendor-CX6w_-Go.js"
+    ]
+  },
+  "_vendor-supabase-Bnmz0qaZ.js": {
+    "file": "assets/vendor-supabase-Bnmz0qaZ.js",
+    "name": "vendor-supabase",
+    "imports": [
+      "_vendor-CX6w_-Go.js"
+    ]
+  },
   "index.html": {
-    "file": "assets/index-DOhu8uEa.js",
+    "file": "assets/index-CCWmu59w.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
+    "imports": [
+      "_vendor-react-BX3OjIHU.js",
+      "_vendor-supabase-Bnmz0qaZ.js",
+      "_vendor-motion-Do-hI8DX.js",
+      "_vendor-CX6w_-Go.js"
+    ],
     "css": [
-      "assets/index-DW0kl9H7.css"
+      "assets/index-B7Jtyl4x.css"
     ]
   }
 }

@@ -1,105 +1,62 @@
-# Recorder 아키텍처 리팩토링 지시서 (Flask 제거 / Supabase RLS 기반)
+# Recorder DB 아키텍처 가이드 (Supabase RLS 기반)
 
 ## 0. 전제
-- 이 프로젝트는 현재 Flask + Flask-Login + 서버 권한 검사 구조다.
-- 목표는 **Flask 서버를 완전히 제거**하고,
-  **Supabase Auth + Row Level Security(RLS)** 를 중심으로 권한을 DB 레벨로 이동한다.
-- 프론트엔드는 React(Vite)를 유지하며 **Vercel에 배포**한다.
-- 서버는 존재하지 않으며, 필요 시 Supabase Edge Function만 사용한다.
-
-아래 `ARCHITECTURE.md` 문서를 반드시 기준으로 삼아라.
+- 현재 구조는 **React(Vite) + Supabase(Auth/DB/Storage)** 중심이다.
+- 서버는 없고, 모든 권한은 **RLS**로 제어한다.
+- 데이터 접근은 **Supabase JS client**로 수행한다.
 
 ---
 
-## 1. 제거해야 할 것 (완전 삭제 대상)
+## 1. 핵심 원칙
 
-### 1.1 Flask 관련
-- Flask application 전체
-- Blueprint / route 기반 접근 제어
-- Flask-Login (세션, current_user)
-- 서버에서 수행하던 모든 권한 검사 로직
-
-### 1.2 서버 의존 로직
-- `/friend/<id>/...` 같은 서버 라우트
-- 이미지 접근 시 서버에서 권한 검사 후 redirect 하는 방식
+- **보이면 권한이 있는 것**이 원칙 (권한은 RLS가 보장)
+- 클라이언트는 단순 조회/입력만 수행
+- 공개/친구/개인 범위는 `visibility`와 `friendships`로 제어
 
 ---
 
-## 2. 새 아키텍처 핵심 원칙
+## 2. 인증
 
-### 2.1 인증
 - Supabase Auth 사용
-- 프론트엔드에서 `supabase.auth.getUser()` 로 현재 사용자 식별
-- user.id === auth.uid()
-
-### 2.2 권한 제어
-- **모든 접근 제어는 Supabase RLS로만 수행**
-- 프론트엔드는 필터링 로직을 갖지 않는다
-- "보이면 권한이 있는 것"이 원칙
+- `supabase.auth.getUser()`로 사용자 식별
+- `public.users.id = auth.uid()` 구조 사용
 
 ---
 
-## 3. 도메인별 변환 지침
+## 3. 도메인 구조
 
 ### 3.1 Private Domain (Owner-only)
 대상 테이블:
-- finance_records
-- schedules
-- todos
-- exercise_plans
-- exercise_records
-- body_records
+- `finance_records`
+- `schedules`
+- `todos`
+- `exercise_plans`
+- `exercise_records`
+- `body_records`
 
-#### RLS 정책
+RLS 기준:
 ```sql
 auth.uid() = user_id
 ```
 
 ---
 
-## 4. 현재 Flask 기준 기능 맵 (routes.py, models.py)
+## 4. Social Domain
 
-### 4.1 인증/세션
-- `/login`, `/register`, `/logout` → Supabase Auth로 대체
-- `current_user` 기반 세션 제거
+### 4.1 Friendships
+- 상태: `pending` / `accepted` / `blocked`
+- 양방향 관계 확인 필요
 
-### 4.2 Private Domain CRUD (Owner-only)
-- `/finance/*`, `/schedule/*`, `/todos/*`, `/exercise/*`
-- 조건: `user_id == current_user.id`
-
-### 4.3 Social Domain (Friends-only + Public)
-- 친구 관계: `friendships` (pending/accepted/blocked)
-- 친구 뷰어:
-  - `/friend/<id>/journal`
-  - `journals.visibility` (private/friends/public)
-- 댓글/좋아요:
-
-### 4.4 Media Access (이미지)
-- `/media/body/<record_id>`
-- 서버 권한 검사 후 로컬 파일 제공 또는 URL 리다이렉트
-
-### 4.5 모델 테이블 (models.py)
-- users, friendships
-- finance_records, schedules, todos
-- exercise_plans, exercise_records, body_records
-- comments, likes
+### 4.2 Journals
+- `visibility`: `private` / `friends` / `public`
+- 친구 관계 + 공개 범위를 모두 고려
 
 ---
 
-## 5. Supabase 전환 설계 (Flask 제거 후)
+## 5. 데이터 접근 방식
 
-### 5.1 Auth 전환
-- 프론트엔드에서 `supabase.auth.getUser()`로 사용자 식별
-- `users` 테이블은 `auth.users`와 `public.users` 프로필 테이블로 분리(권장)
-
-### 5.2 데이터 접근 방식
-- 모든 CRUD를 Supabase JS client로 수행
-- `fetch('/api/...')` 제거, 테이블 직접 접근
-- 서버 API는 Edge Function 필요 시에만 추가
-
-### 5.3 Storage 전환
-- 파일 접근은 Storage RLS로 제어
-- 기존 `/media/*` 라우트 제거
+- 모든 CRUD는 Supabase JS client로 수행
+- Edge Function은 예외 케이스에만 사용
 
 ---
 
@@ -146,29 +103,21 @@ auth.uid() = user_id
 
 ---
 
-## 7. 프론트엔드 작업 항목
+## 7. 프론트엔드 연동 포인트
 
-### 7.1 API 교체
-- `fetch('/finance/...')` → `supabase.from('finance_records')`
-- `fetch('/schedule/...')` → `supabase.from('schedules')`
-- `fetch('/todos/...')` → `supabase.from('todos')`
-- `fetch('/exercise/...')` → `supabase.from('exercise_records')`, `exercise_plans`, `body_records`
-
-### 7.2 세션/유저 상태
+### 7.1 세션/유저 상태
 - `currentUser`는 Supabase auth session에서 주입
 - 프로필 데이터는 `public.users` 테이블에서 읽기
 
-### 7.3 친구 뷰어
-- `/friend/:id/*` 라우트는 유지 가능
+### 7.2 친구 뷰어
+- `/friend/:id/*` 라우트는 유지
 - 데이터 조회는 `friendships`와 RLS로 처리
 
 ---
 
-## 8. 제거 대상 목록 (정리)
-- Flask app 전체 (`run.py`, `app/__init__.py`, `app/routes.py`)
-- Flask-Login 의존 코드
-- `/media/*` 라우트 및 권한 검사
-- 서버에서 수행하던 모든 권한 함수(`is_friend`, `can_view_*`)
+## 8. 참고 사항
+- 서버 없이 Supabase만 사용하는 구조다.
+- 문서의 SQL은 실제 스키마와 맞는지 확인 후 적용한다.
 
 ---
 
@@ -386,24 +335,15 @@ CREATE POLICY "like_delete" ON public.likes
 ## 10. Storage 정책 (Supabase Storage)
 
 ### 10.1 버킷 구성
-- `body` : 몸 기록 이미지
-- (옵션) `journals` : 일기 첨부 이미지
+- `body` : 몸 기록 이미지 (signed URL)
+- `photos` : 프로필 이미지 (public URL 권장)
 
 ### 10.2 객체 경로 규칙
 - `body/{user_id}/{filename}`
+- `photos/{user_id}/{filename}`
 
-### 10.3 Storage RLS 정책 예시
+### 10.3 Storage RLS 정책 예시 (body)
 ```sql
-  FOR SELECT USING (
-    AND (
-      (auth.uid()::text = (storage.foldername(name))[1])
-    )
-  );
-
-  FOR INSERT WITH CHECK (
-    AND (auth.uid()::text = (storage.foldername(name))[1])
-  );
-
 CREATE POLICY "body_read" ON storage.objects
   FOR SELECT USING (
     bucket_id = 'body'
@@ -434,18 +374,18 @@ CREATE INDEX IF NOT EXISTS idx_friendship_friend_user ON public.friendships (fri
 
 ---
 
-## 12. 마이그레이션 단계 요약
+## 12. 초기 세팅 단계 요약
 
 1) Supabase 프로젝트 생성, Auth 활성화  
-2) Postgres 테이블 생성 (현재 models.py 기반 스키마)  
+2) Postgres 테이블 생성  
 3) RLS 및 정책 적용  
 4) Storage 버킷 생성 + RLS  
-5) 프론트엔드 데이터 접근을 Supabase JS로 교체  
-6) Flask 제거 및 Vercel 배포  
+5) 프론트에서 Supabase JS로 연결  
+6) Vercel 배포  
 
 ---
 
-## 13. 테이블 스키마 (models.py 기준 DDL 초안)
+## 13. 테이블 스키마 (public.users 기준 DDL 초안)
 
 > 아래는 현재 Flask SQLAlchemy 모델 기준의 SQL 스키마 초안이다.  
 > 실제 적용 시 `uuid` 기반 사용자 키 사용을 권장한다.
@@ -531,17 +471,6 @@ CREATE TABLE IF NOT EXISTS public.body_records (
   date date NOT NULL,
   image_path text,
   memo text,
-  created_at timestamp with time zone DEFAULT now()
-);
-
-  id bigserial PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  date date NOT NULL,
-  food_name text,
-  calories integer,
-  image_path text,
-  memo text,
-  visibility text DEFAULT 'private',
   created_at timestamp with time zone DEFAULT now()
 );
 
